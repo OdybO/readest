@@ -13,6 +13,7 @@ import { ODYBO_SYSTEM_PROMPT, buildUserPrompt } from './prompt';
 import { contextFor } from './selection';
 import { pickSentence, renderAnswer } from './render';
 import { findHistory, fingerprint, historyKey, saveHistory } from './history';
+import { findPrefetched, isAutoPrefetch, rollingPrefetch, setAutoPrefetch } from './prefetch';
 
 const REQUEST_TIMEOUT_MS = 60_000;
 const MAX_CACHE = 200;
@@ -52,9 +53,60 @@ export const odyboContextProvider: DictionaryProvider = {
     const key = historyKey(book, word, sentence || context);
     const hit = cache.get(key) ?? (await findHistory(key))?.answer;
     if (ctx.signal.aborted) return { ok: false, reason: 'error', message: 'aborted' };
+    // 开了「本书自动预读」时，查完（不管是不是本机记录）就从这里往后预读；底部有开关和进度
+    const prefetchFrom = () =>
+      rollingPrefetch({
+        translator,
+        book,
+        context,
+        at,
+        selection: word,
+        promptVersion: PROMPT_VERSION,
+        onProgress: (p) =>
+          setStatus(`预读 ${p.done}/${p.total}` + (p.done === p.total ? '，完成' : '…')),
+      });
+    let statusEl: HTMLElement | null = null;
+    const setStatus = (t: string) => {
+      if (statusEl) statusEl.textContent = t;
+    };
+    const footer = () => {
+      if (!mine) return; // 没有整段上下文时不预读
+      const row = document.createElement('label');
+      Object.assign(row.style, {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        marginTop: '8px',
+        fontSize: '0.75em',
+        opacity: '0.75',
+      });
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = isAutoPrefetch(book);
+      box.addEventListener('click', (e) => e.stopPropagation()); // 不让词典卡片把点击当成「展开」
+      box.addEventListener('change', () => {
+        setAutoPrefetch(book, box.checked);
+        if (box.checked) void prefetchFrom();
+        else setStatus('');
+      });
+      statusEl = document.createElement('span');
+      row.append(box, document.createTextNode('本书自动预读（往后 3 截）'), statusEl);
+      row.addEventListener('click', (e) => e.stopPropagation());
+      ctx.container.append(row);
+      if (box.checked) void prefetchFrom();
+    };
     if (hit) {
       cache.set(key, hit);
       render(ctx.container, hit, true, '本机记录');
+      footer();
+      return { ok: true, headword: word, sourceLabel: translator.name };
+    }
+    // 选中的是预读过的一截或一句（至少 3 个词）
+    const pre = await findPrefetched(book, word);
+    if (ctx.signal.aborted) return { ok: false, reason: 'error', message: 'aborted' };
+    if (pre) {
+      render(ctx.container, pre.answer, true, pre.note);
+      footer();
       return { ok: true, headword: word, sourceLabel: translator.name };
     }
 
@@ -83,6 +135,7 @@ export const odyboContextProvider: DictionaryProvider = {
       if (ctx.signal.aborted) return { ok: false, reason: 'error', message: 'aborted' };
       answer = stripReasoning(answer);
       render(ctx.container, answer, true);
+      footer();
       if (answer) {
         if (cache.size >= MAX_CACHE) cache.delete(cache.keys().next().value!);
         cache.set(key, answer);
