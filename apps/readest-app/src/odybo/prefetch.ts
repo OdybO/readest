@@ -10,6 +10,7 @@ import {
 } from '@/services/translators/custom/openaiCompatible';
 import { ODYBO_SYSTEM_PROMPT } from './prompt';
 import { PREFETCH_PARALLEL, getSettings } from './settings';
+import { vocabForPrefetch, type VocabEntry } from './vocab';
 import {
   PREFETCH,
   getRecord,
@@ -109,7 +110,9 @@ interface Unit {
   para: string;
   sentence: string;
   text: string;
-  kind: 'chunk' | 'sent';
+  kind: 'chunk' | 'sent' | 'word';
+  /** 这一截里出现的生词（原形），提醒 AI 一定解释（照小工具的 vocab_hint） */
+  hint?: string[];
 }
 
 /** 一段的阅读单位，按顺序。 */
@@ -123,11 +126,21 @@ export const readingUnits = (para: string): Unit[] =>
 
 // ---------- 发给 AI（和自己选中这段文字查一样，同一个提示词） ----------
 
+const vocabHint = (u: Unit) =>
+  u.hint?.length
+    ? `\n\n（读者以前查过、还没记住这些词，这里出现了，请在【词组短语】或【难点】里一定解释：${u.hint.join('、')}）`
+    : '';
+
 const userPrompt = (book: string, u: Unit) =>
   u.kind === 'chunk'
     ? `书名或文章：${book}\n\n选中的内容：${u.text}\n\n所在句子：${u.sentence}\n\n所在段落：${u.para}\n\n` +
-      '（选中的是长句里的一截。请结合整句理解：【翻译】只翻译这一截；【句子拆解】说明这一截在整句里的作用，以及它和前后部分怎么连起来）'
-    : `书名或文章：${book}\n\n选中的内容：${u.text}\n\n所在段落：${u.para}`;
+      '（选中的是长句里的一截。请结合整句理解：【翻译】只翻译这一截；【句子拆解】说明这一截在整句里的作用，以及它和前后部分怎么连起来）' +
+      vocabHint(u)
+    : `书名或文章：${book}\n\n选中的内容：${u.text}\n\n所在段落：${u.para}${u.kind === 'sent' ? vocabHint(u) : ''}`;
+
+/** 存进本机的键：句子和截按内容；生词按「这个词 + 所在句」（同一个词在别的句子里是另一份） */
+const unitKey = (book: string, u: Unit) =>
+  u.kind === 'word' ? prefetchKey(book, `${u.text} | ${u.sentence}`) : prefetchKey(book, u.text);
 
 const running = new Set<string>();
 let active = 0;
@@ -147,7 +160,7 @@ const prefetchUnit = async (
   u: Unit,
   promptVersion: string,
 ): Promise<boolean> => {
-  const key = prefetchKey(book, u.text);
+  const key = unitKey(book, u);
   if (running.has(key)) return false;
   running.add(key);
   try {
@@ -255,6 +268,24 @@ export const rollingPrefetch = async (opts: {
     units.push(u);
   }
   const skip = n(selection);
+  // 生词预读：这几截里出现了生词本前 N 个（最近 D 天）里的词，就另外预读「这个词在这一句里」，每次最多 M 个
+  const st = getSettings();
+  if (st.vocabPerRun > 0) {
+    const entries = await vocabForPrefetch(st.vocabTop, st.vocabDays);
+    const words: Unit[] = [];
+    const seen = new Set<string>();
+    for (const u of units) {
+      const found = findVocab(u.text, entries);
+      if (found.length) u.hint = [...new Set(found.map((f) => f.lemma))];
+      for (const f of found) {
+        const k = `${n(f.surface)}|${n(u.sentence)}`;
+        if (seen.has(k) || n(f.surface) === skip || words.length >= st.vocabPerRun) continue;
+        seen.add(k);
+        words.push({ para: u.para, sentence: u.sentence, text: f.surface, kind: 'word' });
+      }
+    }
+    units.push(...words);
+  }
   const todo = units.filter((u) => n(u.text) !== skip);
   const progress: PrefetchProgress = { total: todo.length, done: 0, added: 0 };
   opts.onProgress?.({ ...progress });
@@ -285,7 +316,7 @@ export const findPrefetched = async (book: string, selection: string) => {
     r.kind === 'chunk' ? r.answer + (await wholeSentenceTail(book, r.sentence)) : r.answer;
   if (exact) return { answer: await withWhole(exact), note: '预读' };
   const all = await listByBook<PrefetchRecord>(PREFETCH, book);
-  const outer = all.filter((r) => contains(n(r.text), ns));
+  const outer = all.filter((r) => r.kind !== 'word' && contains(n(r.text), ns));
   if (!outer.length) return null;
   const r = outer.reduce((a, b) => (n(a.text).length <= n(b.text).length ? a : b));
   if (ns.split(' ').length < 0.5 * n(r.text).split(' ').length) return null;
@@ -293,6 +324,56 @@ export const findPrefetched = async (book: string, selection: string) => {
     answer: await withWhole(r),
     note: `预读 · 你选的是这一截的一部分，下面是整截「${r.text.split(/\s+/).slice(0, 5).join(' ')}…」的解释`,
   };
+};
+
+// ---------- 生词预读 ----------
+
+const escRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** 一个词（或短语）允许常见变形：play → plays / played / playing；短语每个词都允许（照小工具的 word_re） */
+const formRe = (phrase: string) =>
+  new RegExp(
+    `\\b${phrase
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((w) => {
+        const base = w.endsWith('e') && w.length > 3 ? w.slice(0, -1) : w;
+        return `(?:${escRe(w)}|${escRe(base)}(?:s|es|ed|d|ing))`;
+      })
+      .join('\\s+')}\\b`,
+    'i',
+  );
+
+/** 这段文字里出现了哪些生词：返回原形和在文字里的实际写法。查过的写法（forms）和原形都试。 */
+export const findVocab = (text: string, entries: VocabEntry[]) => {
+  const out: { lemma: string; surface: string }[] = [];
+  for (const e of entries) {
+    for (const cand of [...e.forms, e.lemma]) {
+      if (!cand.trim()) continue;
+      const m = text.match(formRe(cand));
+      if (m) {
+        out.push({ lemma: e.lemma, surface: m[0] });
+        break;
+      }
+    }
+  }
+  return out;
+};
+
+/** 选中的单词有没有按生词预读过：同一本书、同一个词、同一句（两边切句子的方式可能稍有不同，互相包含就算）。 */
+export const findPrefetchedWord = async (book: string, word: string, sentence: string) => {
+  const nw = n(word);
+  const ns = n(sentence);
+  if (!nw || !ns) return null;
+  const all = await listByBook<PrefetchRecord>(PREFETCH, book);
+  const r = all.find(
+    (x) =>
+      x.kind === 'word' &&
+      n(x.text) === nw &&
+      (n(x.sentence).includes(ns) || ns.includes(n(x.sentence))),
+  );
+  return r ? { answer: r.answer, note: '预读（生词）' } : null;
 };
 
 /** 一截的答案后面附上：整句原文 + 整句翻译（取自整句的预读，没有就不附）。 */

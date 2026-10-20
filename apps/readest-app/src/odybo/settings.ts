@@ -8,12 +8,21 @@ export interface OdyboSettings {
   shortSentenceWords: number;
   /** 所有书自动预读（不用每本书在卡片底下单独勾） */
   prefetchAllBooks: boolean;
+  /** 生词范围：只看生词本排在最前的几个 */
+  vocabTop: number;
+  /** 最近几天：只看最近几天查过的生词 */
+  vocabDays: number;
+  /** 每次最多：每次预读最多多查几个生词 */
+  vocabPerRun: number;
 }
 
 export const DEFAULT_SETTINGS: OdyboSettings = {
   prefetchAhead: 3,
   shortSentenceWords: 20,
   prefetchAllBooks: false,
+  vocabTop: 20,
+  vocabDays: 30,
+  vocabPerRun: 5,
 };
 
 /** 预读一次同时最多问几截（固定，不放进设置页；开发者 10-20 定） */
@@ -29,6 +38,12 @@ export const getSettings = (): OdyboSettings => {
       prefetchAhead: Number(saved.prefetchAhead) || DEFAULT_SETTINGS.prefetchAhead,
       shortSentenceWords: Number(saved.shortSentenceWords) || DEFAULT_SETTINGS.shortSentenceWords,
       prefetchAllBooks: saved.prefetchAllBooks === true,
+      vocabTop: Number(saved.vocabTop) || DEFAULT_SETTINGS.vocabTop,
+      vocabDays: Number(saved.vocabDays) || DEFAULT_SETTINGS.vocabDays,
+      vocabPerRun:
+        Number(saved.vocabPerRun) >= 0 && saved.vocabPerRun !== undefined
+          ? Number(saved.vocabPerRun)
+          : DEFAULT_SETTINGS.vocabPerRun,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };

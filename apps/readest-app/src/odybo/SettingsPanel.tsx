@@ -120,6 +120,29 @@ const OdyboSettingsPanel: React.FC = () => {
         </Row>
       </BoxedList>
 
+      <BoxedList title='生词预读'>
+        <Row label='生词范围' tip='只看生词本排在最前的 N 个词。'>
+          <Stepper value={s.vocabTop} min={1} max={200} onChange={(v) => update({ vocabTop: v })} />
+        </Row>
+        <Row label='最近几天' tip='只看最近 N 天查过的生词。太久没查的不预读。'>
+          <Stepper
+            value={s.vocabDays}
+            min={1}
+            max={365}
+            unit='天'
+            onChange={(v) => update({ vocabDays: v })}
+          />
+        </Row>
+        <Row label='每次最多' tip='每次预读最多多查几个生词。0 = 不预读生词。'>
+          <Stepper
+            value={s.vocabPerRun}
+            min={0}
+            max={20}
+            onChange={(v) => update({ vocabPerRun: v })}
+          />
+        </Row>
+      </BoxedList>
+
       <BoxedList>
         <Row label='恢复默认' tip='设置回到默认，不删记录。'>
           <button

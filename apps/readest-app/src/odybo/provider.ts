@@ -14,7 +14,14 @@ import { contextFor } from './selection';
 import { pickSentence, renderAnswer } from './render';
 import { findHistory, fingerprint, historyKey, saveHistory } from './history';
 import { getSettings } from './settings';
-import { findPrefetched, isAutoPrefetch, rollingPrefetch, setAutoPrefetch } from './prefetch';
+import { deleteVocab, ignoreVocab, isVocab, lemmaOf } from './vocab';
+import {
+  findPrefetched,
+  findPrefetchedWord,
+  isAutoPrefetch,
+  rollingPrefetch,
+  setAutoPrefetch,
+} from './prefetch';
 
 const REQUEST_TIMEOUT_MS = 60_000;
 const MAX_CACHE = 200;
@@ -73,7 +80,8 @@ export const odyboContextProvider: DictionaryProvider = {
     const setStatus = (t: string) => {
       if (statusEl) statusEl.textContent = t;
     };
-    const footer = () => {
+    const footer = (answer: string) => {
+      vocabButtons(answer);
       if (!mine) return; // 没有整段上下文时不预读
       const row = document.createElement('label');
       Object.assign(row.style, {
@@ -108,18 +116,70 @@ export const odyboContextProvider: DictionaryProvider = {
       ctx.container.append(row);
       if (box.checked) void prefetchFrom();
     };
+    // 查的是单词或短语：底下两个按钮——移出生词本（再查会回来）、忽略（再查也不进生词本）
+    const vocabButtons = (answer: string) => {
+      if (!isVocab(word) || !answer) return;
+      const lemma = lemmaOf({ word, answer });
+      if (!lemma) return;
+      const row = document.createElement('div');
+      Object.assign(row.style, {
+        display: 'flex',
+        gap: '8px',
+        marginTop: '8px',
+        fontSize: '0.75em',
+      });
+      const msg = document.createElement('span');
+      msg.style.opacity = '0.7';
+      const mk = (label: string, act: () => void, done: string) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'btn btn-ghost btn-xs';
+        b.textContent = label;
+        b.addEventListener('click', (e) => {
+          e.stopPropagation();
+          act();
+          msg.textContent = done;
+          row.querySelectorAll('button').forEach((x) => ((x as HTMLButtonElement).disabled = true));
+        });
+        return b;
+      };
+      row.append(
+        mk('移出生词本', () => deleteVocab(lemma), `「${lemma}」已移出生词本，再查会回来`),
+        mk('忽略', () => ignoreVocab(lemma), `「${lemma}」已忽略，以后不进生词本`),
+        msg,
+      );
+      row.addEventListener('click', (e) => e.stopPropagation());
+      ctx.container.append(row);
+    };
+    // 预读的答案被用上了：也记进「自己查过的」（生词本才会算上这一次）
+    const keep = (answer: string) =>
+      saveHistory({
+        key,
+        book,
+        word,
+        sentence,
+        context,
+        answer,
+        model: translator.model ?? '',
+        promptVersion: PROMPT_VERSION,
+        source: 'prefetch',
+        createdAt: Date.now(),
+      });
     if (hit) {
       cache.set(key, hit);
       render(ctx.container, hit, true, '本机记录');
-      footer();
+      footer(hit);
       return { ok: true, headword: word, sourceLabel: translator.name };
     }
-    // 选中的是预读过的一截或一句（至少 3 个词）
-    const pre = await findPrefetched(book, word);
+    // 选中的是预读过的一截或一句（至少 3 个词），或者按生词预读过的「这个词在这一句里」
+    const pre =
+      (await findPrefetched(book, word)) ?? (await findPrefetchedWord(book, word, sentence));
     if (ctx.signal.aborted) return { ok: false, reason: 'error', message: 'aborted' };
     if (pre) {
+      cache.set(key, pre.answer);
+      void keep(pre.answer);
       render(ctx.container, pre.answer, true, pre.note);
-      footer();
+      footer(pre.answer);
       return { ok: true, headword: word, sourceLabel: translator.name };
     }
 
@@ -148,7 +208,7 @@ export const odyboContextProvider: DictionaryProvider = {
       if (ctx.signal.aborted) return { ok: false, reason: 'error', message: 'aborted' };
       answer = stripReasoning(answer);
       render(ctx.container, answer, true);
-      footer();
+      footer(answer);
       if (answer) {
         if (cache.size >= MAX_CACHE) cache.delete(cache.keys().next().value!);
         cache.set(key, answer);

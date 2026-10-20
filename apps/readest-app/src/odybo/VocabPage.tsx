@@ -1,9 +1,20 @@
 // 生词本页面：从「语境查词」设置页里的「生词本 >」进来。
 // 三栏（一周内 / 一个月内 / 更早，按最近一次查询）；每行：原形、次数、最近一次的意思、最近查询时间；
-// 点开看各种写法和每一次查询的书、时间、原句（查的那个词粉色加粗）；可以删除（再查一次会回来）。
+// 点开看各种写法和每一次查询的书、时间、原句（查的那个词粉色加粗）；可以删除（再查一次会回来）或忽略（再查也不进）。
+// 第四栏「已忽略」：忽略过的词，可以恢复。
 import React, { useEffect, useMemo, useState } from 'react';
 import { MdChevronLeft } from 'react-icons/md';
-import { VOCAB_TABS, deleteVocab, formatTime, inTab, loadVocab, type VocabEntry } from './vocab';
+import {
+  VOCAB_TABS,
+  deleteVocab,
+  formatTime,
+  getIgnored,
+  ignoreVocab,
+  inTab,
+  loadVocab,
+  unignoreVocab,
+  type VocabEntry,
+} from './vocab';
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -21,7 +32,11 @@ const Sentence: React.FC<{ text: string; word: string }> = ({ text, word }) => {
   );
 };
 
-const VocabRow: React.FC<{ e: VocabEntry; onDelete: () => void }> = ({ e, onDelete }) => {
+const VocabRow: React.FC<{ e: VocabEntry; onDelete: () => void; onIgnore: () => void }> = ({
+  e,
+  onDelete,
+  onIgnore,
+}) => {
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   useEffect(() => {
@@ -58,7 +73,10 @@ const VocabRow: React.FC<{ e: VocabEntry; onDelete: () => void }> = ({ e, onDele
               </div>
             </div>
           ))}
-          <div className='flex justify-end'>
+          <div className='flex justify-end gap-2'>
+            <button type='button' className='btn btn-ghost btn-sm' onClick={onIgnore}>
+              忽略
+            </button>
             <button
               type='button'
               className={`btn btn-sm ${confirming ? 'btn-error' : 'btn-ghost'}`}
@@ -75,8 +93,12 @@ const VocabRow: React.FC<{ e: VocabEntry; onDelete: () => void }> = ({ e, onDele
 
 const VocabPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [list, setList] = useState<VocabEntry[] | null>(null);
-  const [tab, setTab] = useState<(typeof VOCAB_TABS)[number]['id']>('week');
-  const reload = () => void loadVocab().then(setList);
+  const [tab, setTab] = useState<(typeof VOCAB_TABS)[number]['id'] | 'ignored'>('week');
+  const [ignored, setIgnored] = useState<Record<string, number>>(() => getIgnored());
+  const reload = () => {
+    setIgnored(getIgnored());
+    void loadVocab().then(setList);
+  };
   useEffect(reload, []);
   const counts = useMemo(
     () =>
@@ -85,8 +107,9 @@ const VocabPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       ),
     [list],
   );
-  const current = VOCAB_TABS.find((t) => t.id === tab)!;
-  const shown = (list ?? []).filter((e) => inTab(e, current));
+  const current = VOCAB_TABS.find((t) => t.id === tab);
+  const shown = current ? (list ?? []).filter((e) => inTab(e, current)) : [];
+  const ignoredList = Object.entries(ignored).sort((a, b) => b[1] - a[1]);
 
   return (
     <div className='my-4 w-full space-y-4'>
@@ -106,11 +129,44 @@ const VocabPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             {t.label}（{counts[t.id] ?? 0}）
           </button>
         ))}
+        <button
+          type='button'
+          role='tab'
+          className={`tab ${tab === 'ignored' ? 'tab-active' : ''}`}
+          onClick={() => setTab('ignored')}
+        >
+          已忽略（{ignoredList.length}）
+        </button>
       </div>
       <div className='card eink-bordered border-base-200 bg-base-100 border'>
         <div className='divide-base-200 divide-y ps-4'>
-          {list === null && <div className='text-base-content/60 py-4 text-sm'>读取中…</div>}
-          {list !== null && shown.length === 0 && (
+          {tab !== 'ignored' && list === null && (
+            <div className='text-base-content/60 py-4 text-sm'>读取中…</div>
+          )}
+          {tab === 'ignored' &&
+            (ignoredList.length === 0 ? (
+              <div className='text-base-content/60 py-4 text-sm'>没有忽略的词。</div>
+            ) : (
+              ignoredList.map(([lemma, t]) => (
+                <div key={lemma} className='flex min-h-14 items-center justify-between gap-3 pe-4'>
+                  <span>
+                    <span className='font-semibold'>{lemma}</span>
+                    <span className='text-base-content/60 ms-2 text-xs'>{formatTime(t)} 忽略</span>
+                  </span>
+                  <button
+                    type='button'
+                    className='btn btn-ghost btn-sm'
+                    onClick={() => {
+                      unignoreVocab(lemma);
+                      reload();
+                    }}
+                  >
+                    恢复
+                  </button>
+                </div>
+              ))
+            ))}
+          {tab !== 'ignored' && list !== null && shown.length === 0 && (
             <div className='text-base-content/60 py-4 text-sm'>这一栏还没有生词。</div>
           )}
           {shown.map((e) => (
@@ -119,6 +175,10 @@ const VocabPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               e={e}
               onDelete={() => {
                 deleteVocab(e.lemma);
+                reload();
+              }}
+              onIgnore={() => {
+                ignoreVocab(e.lemma);
                 reload();
               }}
             />
