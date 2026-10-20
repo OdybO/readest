@@ -25,7 +25,7 @@ import {
   undeleteVocab,
   unignoreVocab,
 } from './vocab';
-import { openVocabBook } from './SettingsPanel';
+import { openVocabBook } from './vocabLink';
 import {
   findPrefetched,
   findPrefetchedWord,
@@ -180,7 +180,7 @@ export const odyboContextProvider: DictionaryProvider = {
       btnBook.textContent = '生词本';
       btnBook.className = 'btn btn-sm btn-outline';
       btnBook.style.marginInlineStart = 'auto'; // 靠最右
-      btnBook.addEventListener('click', () => openVocabBook());
+      btnBook.addEventListener('click', () => void openVocabBook());
       if (lensSource)
         void loadVocab().then((list) => {
           notIn = !list.some((e) => e.lemma === lemma);
