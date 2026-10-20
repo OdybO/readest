@@ -13,6 +13,7 @@ import { ODYBO_SYSTEM_PROMPT, buildUserPrompt } from './prompt';
 import { contextFor } from './selection';
 import { pickSentence, renderAnswer } from './render';
 import { findHistory, fingerprint, historyKey, saveHistory } from './history';
+import { getSettings } from './settings';
 import { findPrefetched, isAutoPrefetch, rollingPrefetch, setAutoPrefetch } from './prefetch';
 
 const REQUEST_TIMEOUT_MS = 60_000;
@@ -83,6 +84,7 @@ export const odyboContextProvider: DictionaryProvider = {
       const box = document.createElement('input');
       box.type = 'checkbox';
       box.checked = isAutoPrefetch(book);
+      box.disabled = getSettings().prefetchAllBooks; // 设置里开了「所有书」时，这里不能单独关
       box.addEventListener('click', (e) => e.stopPropagation()); // 不让词典卡片把点击当成「展开」
       box.addEventListener('change', () => {
         setAutoPrefetch(book, box.checked);
@@ -90,7 +92,15 @@ export const odyboContextProvider: DictionaryProvider = {
         else setStatus('');
       });
       statusEl = document.createElement('span');
-      row.append(box, document.createTextNode('本书自动预读（往后 3 截）'), statusEl);
+      row.append(
+        box,
+        document.createTextNode(
+          getSettings().prefetchAllBooks
+            ? `所有书自动预读（往后 ${getSettings().prefetchAhead} 截，设置里改）`
+            : `本书自动预读（往后 ${getSettings().prefetchAhead} 截）`,
+        ),
+        statusEl,
+      );
       row.addEventListener('click', (e) => e.stopPropagation());
       ctx.container.append(row);
       if (box.checked) void prefetchFrom();

@@ -9,6 +9,7 @@ import {
   stripReasoning,
 } from '@/services/translators/custom/openaiCompatible';
 import { ODYBO_SYSTEM_PROMPT } from './prompt';
+import { getSettings } from './settings';
 import {
   PREFETCH,
   getRecord,
@@ -19,16 +20,14 @@ import {
   type PrefetchRecord,
 } from './history';
 
-/** 往后预读几截（小工具的 prefetch_ahead_sents） */
-export const PREFETCH_AHEAD = 3;
-/** 同时最多几个预读请求（小工具是 3，不和手动查词抢太多） */
-const MAX_PARALLEL = 3;
+// 往后预读几截、同时几个请求：在「语境查词」设置页里改（settings.ts），默认都是 3，和小工具一样
 const LONG_SENT = 20;
 
 // ---------- 本书自动预读的开关（每本书单独记，默认关，和小工具一样） ----------
 
 const toggleKey = (book: string) => `odybo.autoPrefetch.${n(book)}`;
 export const isAutoPrefetch = (book: string) => {
+  if (getSettings().prefetchAllBooks) return true;
   try {
     return localStorage.getItem(toggleKey(book)) === '1';
   } catch {
@@ -135,7 +134,7 @@ const running = new Set<string>();
 let active = 0;
 const waiters: (() => void)[] = [];
 const acquire = async () => {
-  while (active >= MAX_PARALLEL) await new Promise<void>((r) => waiters.push(r));
+  while (active >= getSettings().prefetchParallel) await new Promise<void>((r) => waiters.push(r));
   active++;
 };
 const release = () => {
@@ -200,7 +199,7 @@ export interface PrefetchProgress {
 
 /**
  * 从选中处往后预读：所在段落里选中内容结尾落在哪一截，就从那一截（没整个选中）或下一截（整个选中了）开始，
- * 往后 PREFETCH_AHEAD 截，不够就接着数下一段；其中长句的截，整句也加一份。
+ * 往后「设置里的截数」截，不够就接着数下一段；其中长句的截，整句也加一份。
  * context：整段上下文（段与段之间空一行）；at：选中处在 context 里的位置。
  */
 export const rollingPrefetch = async (opts: {
@@ -245,7 +244,7 @@ export const rollingPrefetch = async (opts: {
     if (u.from < selEnd) last = i;
   });
   const covered = selStart <= seq[last]!.from + 1 && selEnd >= seq[last]!.to - 1;
-  const picked = seq.slice(covered ? last + 1 : last, last + 1 + PREFETCH_AHEAD);
+  const picked = seq.slice(covered ? last + 1 : last, last + 1 + getSettings().prefetchAhead);
   // 长句的截：整句也预读一份（放在前面，截的答案会附上整句翻译）
   const units: Unit[] = [];
   const wholes = new Set<string>();

@@ -4,7 +4,7 @@ import { RiFontSize, RiDashboardLine, RiTranslate, RiShareLine } from 'react-ico
 import { VscSymbolColor } from 'react-icons/vsc';
 import { LiaHandPointerSolid } from 'react-icons/lia';
 import { IoAccessibilityOutline } from 'react-icons/io5';
-import { PiRobot, PiSpeakerHigh, PiSun, PiMoon } from 'react-icons/pi';
+import { PiRobot, PiSpeakerHigh, PiSun, PiMoon, PiBookOpenText } from 'react-icons/pi';
 import { TbSunMoon } from 'react-icons/tb';
 import { MdRefresh } from 'react-icons/md';
 import { IconType } from 'react-icons';
@@ -156,6 +156,7 @@ const panelIcons: Record<SettingsPanelType, IconType> = {
   AI: PiRobot,
   Integrations: RiShareLine,
   Custom: IoAccessibilityOutline,
+  Odybo: PiBookOpenText, // [odybo] 我们的「语境查词」设置页
 };
 
 // font panel items

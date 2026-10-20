@@ -33,6 +33,8 @@ import LangPanel from './LangPanel';
 import MiscPanel from './MiscPanel';
 import AIPanel from './AIPanel';
 import TTSPanel from './TTSPanel';
+import { PiBookOpenText } from 'react-icons/pi';
+import OdyboSettingsPanel from '@/odybo/SettingsPanel';
 
 export type SettingsPanelType =
   | 'Font'
@@ -43,7 +45,8 @@ export type SettingsPanelType =
   | 'Language'
   | 'AI'
   | 'Integrations'
-  | 'Custom';
+  | 'Custom'
+  | 'Odybo'; // [odybo] 我们的「语境查词」设置页
 export type SettingsPanelPanelProp = {
   bookKey: string;
   onRegisterReset: (resetFn: () => void) => void;
@@ -135,6 +138,12 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       tab: 'Custom',
       icon: IoAccessibilityOutline,
       label: _('Custom'),
+    },
+    // [odybo] 我们的「语境查词」设置页（src/odybo/SettingsPanel.tsx）
+    {
+      tab: 'Odybo',
+      icon: PiBookOpenText,
+      label: '语境查词',
     },
   ] as TabConfig[];
 
@@ -307,6 +316,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     AI: null,
     Integrations: null,
     Custom: null,
+    Odybo: null, // [odybo]
   });
 
   const registerResetFunction = (panel: SettingsPanelType, resetFn: () => void) => {
@@ -600,6 +610,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         )}
         {activePanel === 'AI' && <AIPanel />}
         {activePanel === 'Integrations' && <IntegrationsPanel />}
+        {activePanel === 'Odybo' && <OdyboSettingsPanel />}
         {activePanel === 'Custom' && (
           <MiscPanel
             bookKey={bookKey}

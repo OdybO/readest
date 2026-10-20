@@ -122,6 +122,14 @@ export const listByBook = async <T>(store: string, book: string): Promise<T[]> =
   }
 };
 
+export const countRecords = async (store: string): Promise<number> => {
+  try {
+    return await run<number>(store, 'readonly', (s) => s.count());
+  } catch {
+    return 0;
+  }
+};
+
 export const findHistory = (key: string) => getRecord<HistoryRecord>(HISTORY, key);
 export const saveHistory = (rec: HistoryRecord) => putRecord(HISTORY, rec);
 
