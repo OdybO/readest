@@ -199,13 +199,42 @@ export const renderAnswer = (
   container.replaceChildren(root);
 };
 
-/** 从上下文里找出选中内容所在的那一句（照 ctx_lookup.py 的 pick_sentence）。 */
-export const pickSentence = (block: string, word: string) => {
+const squash = (s: string) => s.replace(/\s+/g, ' ').toLowerCase();
+
+/**
+ * 从上下文里找出选中内容所在的那一句。
+ * 上下文里同一个词可能出现好几次（前一段里也有 systems），所以先用「选中处紧挨着的前文」定位到选中的那一处，
+ * 再取包含这个位置的那一句；定位不到才退回「第一句含这个词的」（照 ctx_lookup.py 的 pick_sentence）。
+ * before：选中处前面的文字（Readest 算的，末尾紧挨着选中的内容）。
+ */
+export const pickSentence = (block: string, word: string, before = '') => {
   if (!block) return '';
-  const parts = block.split(/\n{2,}/).flatMap((p) => p.split(/(?<=[.!?。”"])\s+(?=[A-Z“"(])/));
-  const wl = word.replace(/\s+/g, ' ').trim().toLowerCase();
-  const hit = parts.find((p) => p.toLowerCase().includes(wl));
-  if (hit) return hit.trim();
-  const first = wl.split(' ')[0];
-  return (first && parts.find((p) => p.toLowerCase().includes(first))?.trim()) || '';
+  // 段落之间保留空行，其余空白压成一个空格；找位置和切句子用同一份文字，下标才对得上
+  const raw = block.replace(/\s+/g, (s) => (s.includes('\n\n') ? '\n\n' : ' '));
+  const text = raw.toLowerCase();
+  const w = squash(word).trim();
+  let at = -1;
+  // 用选中处前面最多 60、30、12 个字加上选中的词去找，越长越准，找不到再缩短
+  for (const n of [60, 30, 12]) {
+    const tail = squash(before).slice(-n).trimStart();
+    if (!tail) break;
+    const i = text.indexOf(tail + w);
+    if (i >= 0) {
+      at = i + tail.length;
+      break;
+    }
+  }
+  if (at < 0) at = text.indexOf(w);
+  if (at < 0) return '';
+  // 句子边界：段落分隔、或句末标点后跟空格再跟大写/引号/括号
+  const ends: number[] = [0];
+  // 句末标点后面可能紧跟脚注编号（intelligence.”1 The game）
+  const re = /\n{2,}|(?<=[.!?。”"]\d{0,3})\s+(?=[A-Z“"(])/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(raw))) ends.push(m.index, m.index + m[0].length);
+  ends.push(raw.length);
+  for (let k = 0; k + 1 < ends.length; k += 2) {
+    if (at >= ends[k]! && at < ends[k + 1]!) return raw.slice(ends[k], ends[k + 1]).trim();
+  }
+  return '';
 };

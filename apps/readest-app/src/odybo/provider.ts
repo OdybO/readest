@@ -37,7 +37,7 @@ export const odyboContextProvider: DictionaryProvider = {
     const context =
       contextFor(word) || [sel?.before, word, sel?.after].filter(Boolean).join(' ').trim();
     const prompt = buildUserPrompt(sel?.bookTitle ?? '', word, sel ? context : '');
-    const sentence = pickSentence(context, word);
+    const sentence = pickSentence(context, word, sel?.before ?? '');
     const render = (container: HTMLElement, answer: string, done: boolean) =>
       renderAnswer(container, answer, { word, sentence, done, dark: ctx.isDarkMode });
     const key = `${translator.id}|${translator.model}|${prompt}`;
