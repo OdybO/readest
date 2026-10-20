@@ -34,10 +34,15 @@ export const odyboContextProvider: DictionaryProvider = {
     }
     const sel = ctx.selection;
     // 整段上下文对不上时（比如在词典里点了另一个词），退回 Readest 自己算的前后文
-    const context =
-      contextFor(word) || [sel?.before, word, sel?.after].filter(Boolean).join(' ').trim();
+    const mine = contextFor(word);
+    const before = (sel?.before ?? '').trim();
+    const context = mine
+      ? mine.context
+      : [before, word, sel?.after].filter(Boolean).join(' ').trim();
+    // 选中处在上下文里的位置：我们的整段算法直接给出；退回 Readest 的前后文时，就在前文后面
+    const at = mine ? mine.at : before ? before.length + 1 : 0;
     const prompt = buildUserPrompt(sel?.bookTitle ?? '', word, sel ? context : '');
-    const sentence = pickSentence(context, word, sel?.before ?? '');
+    const sentence = pickSentence(context, word, at);
     const render = (container: HTMLElement, answer: string, done: boolean) =>
       renderAnswer(container, answer, { word, sentence, done, dark: ctx.isDarkMode });
     const key = `${translator.id}|${translator.model}|${prompt}`;

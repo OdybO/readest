@@ -203,26 +203,27 @@ const squash = (s: string) => s.replace(/\s+/g, ' ').toLowerCase();
 
 /**
  * 从上下文里找出选中内容所在的那一句。
- * 上下文里同一个词可能出现好几次（前一段里也有 systems），所以先用「选中处紧挨着的前文」定位到选中的那一处，
- * 再取包含这个位置的那一句；定位不到才退回「第一句含这个词的」（照 ctx_lookup.py 的 pick_sentence）。
- * before：选中处前面的文字（Readest 算的，末尾紧挨着选中的内容）。
+ * 上下文里同一个词可能出现好几次（前一段里也有 systems），所以用选中处的位置 hint（整段算法给出）定位，
+ * 取包含这个位置的那一句；不知道位置才退回「第一句含这个词的」（照 ctx_lookup.py 的 pick_sentence）。
  */
-export const pickSentence = (block: string, word: string, before = '') => {
+export const pickSentence = (block: string, word: string, hint = -1) => {
   if (!block) return '';
-  // 段落之间保留空行，其余空白压成一个空格；找位置和切句子用同一份文字，下标才对得上
+  // 段落之间保留空行，其余空白压成一个空格（整段算法给的上下文本来就是这样，下标不变）
   const raw = block.replace(/\s+/g, (s) => (s.includes('\n\n') ? '\n\n' : ' '));
   const text = raw.toLowerCase();
   const w = squash(word).trim();
   let at = -1;
-  // 用选中处前面最多 60、30、12 个字加上选中的词去找，越长越准，找不到再缩短
-  for (const n of [60, 30, 12]) {
-    const tail = squash(before).slice(-n).trimStart();
-    if (!tail) break;
-    const i = text.indexOf(tail + w);
-    if (i >= 0) {
-      at = i + tail.length;
-      break;
+  if (hint >= 0) {
+    // 位置附近（前后 40 字以内）离它最近的那一处选中的词；PDF 选中的文字可能和上下文差一点，就直接用位置
+    let best = -1;
+    for (
+      let i = text.indexOf(w, Math.max(0, hint - 40));
+      i >= 0 && i <= hint + 40;
+      i = text.indexOf(w, i + 1)
+    ) {
+      if (best < 0 || Math.abs(i - hint) < Math.abs(best - hint)) best = i;
     }
+    at = best >= 0 ? best : Math.min(hint, raw.length - 1);
   }
   if (at < 0) at = text.indexOf(w);
   if (at < 0) return '';

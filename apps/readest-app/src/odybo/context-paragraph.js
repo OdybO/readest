@@ -311,8 +311,10 @@ export const buildParagraphs = (allLines) => {
 
 // ---------- fitting paragraphs into the size budget ----------
 
+// 软连字符（U+00AD）是阅读器为了两端对齐自动插进单词里的断字点，不是原文：去掉
 const clean = (s) =>
   String(s || '')
+    .replace(/­/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 const keepTail = (s, n) => (s.length <= n ? s : s.slice(s.length - n).replace(/^\S*\s/, ''));
@@ -320,9 +322,17 @@ const keepHead = (s, n) => (s.length <= n ? s : s.slice(0, n).replace(/\s\S*$/, 
 
 // before / after: neighbouring paragraphs; mid: the paragraph(s) holding the selection;
 // pos: index of the selection start inside mid (raw text, before whitespace is collapsed)
-export const composeContext = ({ before = '', mid = '', after = '', pos = 0 }, maxChars = 2000) => {
+export const composeContext = (parts, maxChars = 2000) => composeContextInfo(parts, maxChars).text;
+
+// 同 composeContext，另外给出选中处在结果里的位置 at（截掉了就是 -1）：
+// 在选中处插一个记号字符，跟着一起压空白、截取，最后找记号的位置再把它去掉
+const MARK = '\u0001';
+export const composeContextInfo = (
+  { before = '', mid = '', after = '', pos = 0 },
+  maxChars = 2000,
+) => {
   const pre = clean(mid.slice(0, pos)).length;
-  let m = clean(mid);
+  let m = clean(mid.slice(0, pos) + MARK + mid.slice(pos));
   const midMax = Math.floor(maxChars * 0.7);
   if (m.length > midMax) {
     const a = Math.max(0, Math.min(m.length - midMax, pre - Math.floor(midMax / 2)));
@@ -342,7 +352,10 @@ export const composeContext = ({ before = '', mid = '', after = '', pos = 0 }, m
       c = keepHead(c, half);
     }
   }
-  return [b, m, c].filter(Boolean).join('\n\n');
+  const k = m.indexOf(MARK);
+  m = m.replace(MARK, '');
+  const text = [b, m, c].filter(Boolean).join('\n\n');
+  return { text, at: k < 0 ? -1 : (b ? b.length + 2 : 0) + k };
 };
 
 // ---------- DOM glue ----------
@@ -470,7 +483,10 @@ const pdfContext = (range, maxChars) => {
     .slice(s.pi, e.pi + 1)
     .map((p) => p.text)
     .join(' ');
-  return composeContext({ before: near(s.pi, -1), mid, after: near(e.pi, 1), pos: s.at }, maxChars);
+  return composeContextInfo(
+    { before: near(s.pi, -1), mid, after: near(e.pi, 1), pos: s.at },
+    maxChars,
+  );
 };
 
 const BLOCK_SELECTOR =
@@ -501,13 +517,18 @@ const epubContext = (range, maxChars) => {
     }
     return '';
   };
-  return composeContext(
+  return composeContextInfo(
     { before: neighbour(si, -1), mid, after: neighbour(ei, 1), pos: pre.toString().length },
     maxChars,
   );
 };
 
-export const buildContextText = (range, { maxChars = 2000 } = {}) => {
-  if (!range) return '';
-  return pdfContext(range, maxChars) || epubContext(range, maxChars);
+// { text: 上下文, at: 选中处在 text 里的位置（-1 = 不知道） }；建不出来时 text 为空
+export const buildContextInfo = (range, { maxChars = 2000 } = {}) => {
+  const none = { text: '', at: -1 };
+  if (!range) return none;
+  const r = pdfContext(range, maxChars) || epubContext(range, maxChars);
+  return r && r.text ? r : none;
 };
+
+export const buildContextText = (range, opts) => buildContextInfo(range, opts).text;
