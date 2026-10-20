@@ -489,6 +489,14 @@ const pdfContext = (range, maxChars) => {
   );
 };
 
+// 文字内容，但不要 <rt> 里的标注小字（单词透镜、生词标注插在词上面的那些）
+const textOf = (node) => {
+  if (!node.querySelector || !node.querySelector('rt')) return node.textContent;
+  const c = node.cloneNode(true);
+  c.querySelectorAll('rt, rp').forEach((x) => x.remove());
+  return c.textContent;
+};
+
 const BLOCK_SELECTOR =
   'p, li, blockquote, h1, h2, h3, h4, h5, h6, dd, dt, td, th, pre, figcaption, div';
 
@@ -508,17 +516,22 @@ const epubContext = (range, maxChars) => {
   pre.setEnd(range.startContainer, range.startOffset);
   const mid = leaves
     .slice(si, ei + 1)
-    .map((el) => el.textContent)
+    .map(textOf)
     .join(' ');
   // blocks hidden by the book's CSS (display: none, e.g. note labels) are in the DOM but not on the page: skip them
   const neighbour = (from, step) => {
     for (let i = from + step, n = 0; i >= 0 && i < leaves.length && n < 40; i += step, n++) {
-      if (leaves[i].getClientRects().length > 0) return leaves[i].textContent;
+      if (leaves[i].getClientRects().length > 0) return textOf(leaves[i]);
     }
     return '';
   };
   return composeContextInfo(
-    { before: neighbour(si, -1), mid, after: neighbour(ei, 1), pos: pre.toString().length },
+    {
+      before: neighbour(si, -1),
+      mid,
+      after: neighbour(ei, 1),
+      pos: textOf(pre.cloneContents()).length,
+    },
     maxChars,
   );
 };

@@ -14,6 +14,10 @@ export interface OdyboSettings {
   vocabDays: number;
   /** 每次最多：每次预读最多多查几个生词 */
   vocabPerRun: number;
+  /** 生词预读开关：关掉就不预读生词，书里也不标生词 */
+  vocabPrefetch: boolean;
+  /** 生词标法：gloss = 字上面显示这一句里的解释，dot = 只标一个带颜色的点 */
+  vocabMarkStyle: 'gloss' | 'dot';
 }
 
 export const DEFAULT_SETTINGS: OdyboSettings = {
@@ -23,6 +27,8 @@ export const DEFAULT_SETTINGS: OdyboSettings = {
   vocabTop: 20,
   vocabDays: 30,
   vocabPerRun: 5,
+  vocabPrefetch: true,
+  vocabMarkStyle: 'gloss',
 };
 
 /** 预读一次同时最多问几截（固定，不放进设置页；开发者 10-20 定） */
@@ -44,6 +50,8 @@ export const getSettings = (): OdyboSettings => {
         Number(saved.vocabPerRun) >= 0 && saved.vocabPerRun !== undefined
           ? Number(saved.vocabPerRun)
           : DEFAULT_SETTINGS.vocabPerRun,
+      vocabPrefetch: saved.vocabPrefetch !== false,
+      vocabMarkStyle: saved.vocabMarkStyle === 'dot' ? 'dot' : 'gloss',
     };
   } catch {
     return { ...DEFAULT_SETTINGS };

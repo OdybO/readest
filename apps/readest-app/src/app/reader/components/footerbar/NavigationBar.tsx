@@ -12,6 +12,7 @@ import { useSidebarStore } from '@/store/sidebarStore';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import Button from '@/components/Button';
 import { Insets } from '@/types/misc';
+import OdyboToolbarButton from '@/odybo/ToolbarButton';
 
 interface NavigationBarProps {
   bookKey: string;
@@ -85,6 +86,8 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
         icon={<TTSIcon className={viewState?.ttsEnabled ? 'text-blue-500' : ''} />}
         onClick={() => onSetActionTab('tts')}
       />
+      {/* [odybo] 语境查词的开关（src/odybo/ToolbarButton.tsx） */}
+      <OdyboToolbarButton bookKey={bookKey} />
     </div>
   );
 };

@@ -2,6 +2,7 @@
 // 接入点：services/dictionaries/contextDictionary.ts 的 buildSelectionContext 开头调用 rememberSelection(range)。
 // Readest 原来的前后文照常算、照常返回，这里只是另外记一份。
 import { buildContextInfo } from './context-paragraph.js';
+import { isOurMark } from './marks';
 
 const MAX_CHARS = 2000;
 
@@ -17,9 +18,10 @@ interface Remembered {
 let last: Remembered | null = null;
 
 // 单词透镜点小字时，Readest 先替你选中那个词再查；接入点：Annotator.tsx 在那条路上调用 markWordLensLookup()
+// 点的是我们自己标的生词（marks.ts）就不算透镜：算自己查，进生词本
 let lensPending = false;
-export const markWordLensLookup = () => {
-  lensPending = true;
+export const markWordLensLookup = (element?: Element | null) => {
+  lensPending = !isOurMark(element ?? null);
 };
 
 const norm = (s: string) =>

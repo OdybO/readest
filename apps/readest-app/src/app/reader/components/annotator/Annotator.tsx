@@ -1023,6 +1023,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets; gridInsets?:
         return;
       }
       const text = range.toString().trim() || word;
+      markWordLensLookup(element); // [odybo] 点透镜查的词不进生词本，点我们标的生词照常算（src/odybo/selection.ts）
       pendingWordLensDictRef.current = true;
       setSelection({
         key: bookKey,
@@ -1374,7 +1375,6 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets; gridInsets?:
         // Route through handleDictionary so a Word Lens gloss tap honours the
         // dictionary settings (system dictionary vs the in-app popup) — same
         // as the selection-toolbar and instant-quick-action dictionary paths.
-        markWordLensLookup(); // [odybo] 点单词透镜查的词不进生词本（src/odybo/selection.ts）
         handleDictionary();
       } else if (
         enableAnnotationQuickActions &&

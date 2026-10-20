@@ -56,6 +56,7 @@ import { applyScrollableStyle, applyTableTouchScroll } from '@/utils/scrollable'
 import { mountAdditionalFonts, mountCustomFont } from '@/styles/fonts';
 import { layoutWarichu, relayoutWarichu } from '@/utils/warichu';
 import { refreshSectionGlosses } from '@/app/reader/utils/wordlensSection';
+import { markVocabInDoc, odyboBookName } from '@/odybo/marks';
 import { getBookDirFromLanguage, getBookDirFromWritingMode } from '@/utils/book';
 import { getIndexFromCfi } from '@/utils/cfi';
 import { useUICSS } from '@/hooks/useUICSS';
@@ -411,6 +412,10 @@ const FoliateViewer: React.FC<{
       // fix-ups below both resolve styles off this document.
       applyNamespacedAttributes(detail.doc);
       applyLinkHitArea(detail.doc);
+      // [odybo] 章节一载入就标出预读过的生词（之后透镜刷新时会重标；src/odybo/marks.ts）
+      if (bookDoc.rendition?.layout !== 'pre-paginated') {
+        void markVocabInDoc(detail.doc, odyboBookName(getBookData(bookKey)?.book));
+      }
       const renderer = viewRef.current?.renderer;
       const writingDir = renderer?.setStyles && getDirection(detail.doc);
       const viewSettings = getViewSettings(bookKey)!;
@@ -619,7 +624,13 @@ const FoliateViewer: React.FC<{
           relayoutWarichu(doc);
         }
         if (vs && appService && !isFixedLayout) {
-          void refreshSectionGlosses(doc, vs, buildWordLensCtx(bookLang));
+          // [odybo] 透镜刷新完，再标出预读过的生词（src/odybo/marks.ts）
+          void refreshSectionGlosses(doc, vs, buildWordLensCtx(bookLang)).then(() =>
+            markVocabInDoc(doc, odyboBookName(getBookData(bookKey)?.book)),
+          );
+        } else if (!isFixedLayout) {
+          // [odybo] 透镜这次没刷新（比如直接刷新了阅读页），生词照样标
+          void markVocabInDoc(doc, odyboBookName(getBookData(bookKey)?.book));
         }
       }
     }
@@ -1124,7 +1135,11 @@ const FoliateViewer: React.FC<{
     // one-time "Downloading…" toast fire again for it.
     wordLensToastShownRef.current = false;
     for (const { doc } of contents) {
-      if (doc) void refreshSectionGlosses(doc, vs, buildWordLensCtx(bookLang));
+      // [odybo] 透镜刷新完，再标出预读过的生词（src/odybo/marks.ts）
+      if (doc)
+        void refreshSectionGlosses(doc, vs, buildWordLensCtx(bookLang)).then(() =>
+          markVocabInDoc(doc, odyboBookName(getBookData(bookKey)?.book)),
+        );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewSettings?.wordLensEnabled, viewSettings?.wordLensLevel, viewSettings?.wordLensHintLang]);

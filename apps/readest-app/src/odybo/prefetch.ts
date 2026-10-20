@@ -11,6 +11,7 @@ import {
 import { ODYBO_SYSTEM_PROMPT } from './prompt';
 import { PREFETCH_PARALLEL, getSettings } from './settings';
 import { vocabForPrefetch, type VocabEntry } from './vocab';
+import { remarkOpenDocs } from './marks';
 import {
   PREFETCH,
   getRecord,
@@ -270,7 +271,7 @@ export const rollingPrefetch = async (opts: {
   const skip = n(selection);
   // 生词预读：这几截里出现了生词本前 N 个（最近 D 天）里的词，就另外预读「这个词在这一句里」，每次最多 M 个
   const st = getSettings();
-  if (st.vocabPerRun > 0) {
+  if (st.vocabPrefetch && st.vocabPerRun > 0) {
     const entries = await vocabForPrefetch(st.vocabTop, st.vocabDays);
     const words: Unit[] = [];
     const seen = new Set<string>();
@@ -297,6 +298,7 @@ export const rollingPrefetch = async (opts: {
       opts.onProgress?.({ ...progress });
     }),
   );
+  if (progress.added) remarkOpenDocs(opts.book); // 新预读到的生词，在书里标出来
 };
 
 // ---------- 选中的文字有没有预读过 ----------

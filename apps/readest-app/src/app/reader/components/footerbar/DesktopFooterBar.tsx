@@ -9,6 +9,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import type { FooterBarChildProps } from './types';
 import { getNavigationIcon } from './utils';
 import Button from '@/components/Button';
+import OdyboToolbarButton from '@/odybo/ToolbarButton';
 import PageJumpInput from './PageJumpInput';
 
 const DesktopFooterBar: React.FC<FooterBarChildProps> = ({
@@ -115,6 +116,8 @@ const DesktopFooterBar: React.FC<FooterBarChildProps> = ({
         onClick={onSpeakText!}
         label={_('Speak')}
       />
+      {/* [odybo] 语境查词的开关（src/odybo/ToolbarButton.tsx） */}
+      <OdyboToolbarButton bookKey={bookKey} />
       {!viewSettings?.showPaginationButtons && (
         <Button
           icon={getNavigationIcon(viewSettings?.rtl, <RiArrowRightSLine />, <RiArrowLeftSLine />)}
