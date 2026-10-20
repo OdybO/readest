@@ -6,6 +6,7 @@
 |---|---|
 | `src/services/dictionaries/registry.ts` | 「语境词典」（`builtin:context`）返回 `odyboContextProvider` |
 | `src/services/dictionaries/contextDictionary.ts` | `buildSelectionContext` 开头调用 `rememberSelection(range)`，另外记一份整段上下文 |
+| `src/app/reader/components/annotator/DictionaryResultsView.tsx` | 我们的卡片查询中也显示（边出边显示）、不折叠成 4 行：`isOdyboStreamingProvider(p.id)` |
 | `apps/readest-app/.env.local`（不进 git，云编译时生成） | `NEXT_PUBLIC_SELF_HOSTED=true`，付费功能的开关全部打开 |
 
 ## 文件
@@ -14,6 +15,7 @@
 - `selection.ts`：选中文字时记下整段上下文，查词时按选中的文字取回。
 - `prompt.ts`：提示词，从电脑小工具 `D:\Tools\CtxLookup\ctx_lookup.py` 的 `SYSTEM` 原样抽出来。
 - `provider.ts`：顶替「语境词典」，用我们的提示词，答案边出边显示，同一个词同一段上下文查过就直接显示。
+- `render.ts`：排版，照小工具：栏目名粉色、【这里的意思】大字、【整句翻译】浅蓝、词组等英文黄色；内容是「无」的栏目和【原形】不显示；最后附原句，选中的粉色加粗、词组短语加下划线。
 
 ## 怎么用
 

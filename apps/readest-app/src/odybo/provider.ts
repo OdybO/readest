@@ -11,38 +11,15 @@ import type { DictionaryProvider } from '@/services/dictionaries/types';
 import { BUILTIN_PROVIDER_IDS } from '@/services/dictionaries/types';
 import { ODYBO_SYSTEM_PROMPT, buildUserPrompt } from './prompt';
 import { contextFor } from './selection';
+import { pickSentence, renderAnswer } from './render';
 
 const REQUEST_TIMEOUT_MS = 60_000;
 const MAX_CACHE = 200;
 const cache = new Map<string, string>(); // 同一个词、同一段上下文查过就直接显示
 
-/** 把答案画进弹窗：【栏目名】加粗，其余照原样分行。 */
-const render = (container: HTMLElement, answer: string, done: boolean) => {
-  container.replaceChildren();
-  const box = document.createElement('div');
-  box.className = 'odybo-answer text-base leading-relaxed';
-  for (const line of answer.split('\n')) {
-    const p = document.createElement('p');
-    p.className = line.trim() ? 'mt-1' : 'mt-2';
-    const m = line.match(/^(【[^】]+】)(.*)$/);
-    if (m) {
-      const b = document.createElement('span');
-      b.className = 'font-semibold';
-      b.textContent = m[1]!;
-      p.append(b, m[2]!);
-    } else {
-      p.textContent = line;
-    }
-    box.append(p);
-  }
-  if (!done) {
-    const dots = document.createElement('p');
-    dots.className = 'mt-1 not-eink:opacity-60';
-    dots.textContent = answer ? '…' : '正在查询…';
-    box.append(dots);
-  }
-  container.append(box);
-};
+/** 弹窗在查询中会把内容藏起来、没展开时只显示 4 行；我们的查词要边出边显示、整个显示。
+ * 接入点：app/reader/components/annotator/DictionaryResultsView.tsx 用这个判断。 */
+export const isOdyboStreamingProvider = (id: string) => id === BUILTIN_PROVIDER_IDS.context;
 
 export const odyboContextProvider: DictionaryProvider = {
   id: BUILTIN_PROVIDER_IDS.context,
@@ -60,6 +37,9 @@ export const odyboContextProvider: DictionaryProvider = {
     const context =
       contextFor(word) || [sel?.before, word, sel?.after].filter(Boolean).join(' ').trim();
     const prompt = buildUserPrompt(sel?.bookTitle ?? '', word, sel ? context : '');
+    const sentence = pickSentence(context, word);
+    const render = (container: HTMLElement, answer: string, done: boolean) =>
+      renderAnswer(container, answer, { word, sentence, done, dark: ctx.isDarkMode });
     const key = `${translator.id}|${translator.model}|${prompt}`;
     const hit = cache.get(key);
     if (hit) {

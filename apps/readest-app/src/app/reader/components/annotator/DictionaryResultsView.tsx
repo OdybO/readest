@@ -27,6 +27,7 @@ import type {
   WebSearchEntry,
 } from '@/services/dictionaries/types';
 import type { Insets } from '@/types/misc';
+import { isOdyboStreamingProvider } from '@/odybo/provider';
 
 const isTauri = isTauriAppPlatform();
 const ZERO_INSETS: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -562,8 +563,10 @@ export const DictionaryResultsBody: React.FC<DictionaryResultsBodyProps> = ({
       <ul className='flex flex-col gap-3'>
         {visibleDefinitionProviders.map((p) => {
           const card = cards[p.id];
-          const isLoading = !card || card.state === 'loading';
-          const expanded = card?.expanded ?? false;
+          // [odybo] 我们的语境查词边出边显示、整个显示（src/odybo/provider.ts）
+          const streams = isOdyboStreamingProvider(p.id);
+          const isLoading = !streams && (!card || card.state === 'loading');
+          const expanded = streams || (card?.expanded ?? false);
           const sourceLabel =
             card?.outcome?.ok && card.outcome.sourceLabel ? card.outcome.sourceLabel : _(p.label);
           return (
