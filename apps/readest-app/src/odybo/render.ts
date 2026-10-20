@@ -147,7 +147,8 @@ const sentenceView = (sentence: string, word: string, phrases: string[], c: Pale
 export const renderAnswer = (
   container: HTMLElement,
   answer: string,
-  opts: { word: string; sentence: string; done: boolean; dark?: boolean },
+  /** note：显示在最下面的灰色小字，比如「本机记录」（没问 AI，直接用存下来的答案） */
+  opts: { word: string; sentence: string; done: boolean; dark?: boolean; note?: string },
 ) => {
   const c = opts.dark === false ? LIGHT : DARK;
   const { head, sections } = parse(answer, opts.done);
@@ -195,6 +196,9 @@ export const renderAnswer = (
       }),
     );
     root.append(sentenceView(opts.sentence, opts.word, phrases, c));
+  }
+  if (opts.note) {
+    root.append(el('div', opts.note, { color: c.dim, fontSize: '0.75em', marginTop: '8px' }));
   }
   container.replaceChildren(root);
 };

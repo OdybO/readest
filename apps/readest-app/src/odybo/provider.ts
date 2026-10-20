@@ -12,10 +12,12 @@ import { BUILTIN_PROVIDER_IDS } from '@/services/dictionaries/types';
 import { ODYBO_SYSTEM_PROMPT, buildUserPrompt } from './prompt';
 import { contextFor } from './selection';
 import { pickSentence, renderAnswer } from './render';
+import { findHistory, fingerprint, historyKey, saveHistory } from './history';
 
 const REQUEST_TIMEOUT_MS = 60_000;
 const MAX_CACHE = 200;
-const cache = new Map<string, string>(); // 同一个词、同一段上下文查过就直接显示
+const cache = new Map<string, string>(); // 内存里的一份，省得每次读本机记录
+const PROMPT_VERSION = fingerprint(ODYBO_SYSTEM_PROMPT);
 
 /** 弹窗在查询中会把内容藏起来、没展开时只显示 4 行；我们的查词要边出边显示、整个显示。
  * 接入点：app/reader/components/annotator/DictionaryResultsView.tsx 用这个判断。 */
@@ -43,12 +45,16 @@ export const odyboContextProvider: DictionaryProvider = {
     const at = mine ? mine.at : before ? before.length + 1 : 0;
     const prompt = buildUserPrompt(sel?.bookTitle ?? '', word, sel ? context : '');
     const sentence = pickSentence(context, word, at);
-    const render = (container: HTMLElement, answer: string, done: boolean) =>
-      renderAnswer(container, answer, { word, sentence, done, dark: ctx.isDarkMode });
-    const key = `${translator.id}|${translator.model}|${prompt}`;
-    const hit = cache.get(key);
+    const render = (container: HTMLElement, answer: string, done: boolean, note = '') =>
+      renderAnswer(container, answer, { word, sentence, done, dark: ctx.isDarkMode, note });
+    // 查过没有：同一本书 + 同一个选中的内容 + 同一句（找不到所在句时用整段上下文代替）
+    const book = [sel?.bookTitle, sel?.bookAuthor].filter(Boolean).join(' / ');
+    const key = historyKey(book, word, sentence || context);
+    const hit = cache.get(key) ?? (await findHistory(key))?.answer;
+    if (ctx.signal.aborted) return { ok: false, reason: 'error', message: 'aborted' };
     if (hit) {
-      render(ctx.container, hit, true);
+      cache.set(key, hit);
+      render(ctx.container, hit, true, '本机记录');
       return { ok: true, headword: word, sourceLabel: translator.name };
     }
 
@@ -80,6 +86,18 @@ export const odyboContextProvider: DictionaryProvider = {
       if (answer) {
         if (cache.size >= MAX_CACHE) cache.delete(cache.keys().next().value!);
         cache.set(key, answer);
+        void saveHistory({
+          key,
+          book,
+          word,
+          sentence,
+          context,
+          answer,
+          model: translator.model ?? '',
+          promptVersion: PROMPT_VERSION,
+          source: 'lookup',
+          createdAt: Date.now(),
+        });
       }
       return { ok: true, headword: word, sourceLabel: translator.name };
     } catch (err) {
