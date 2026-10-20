@@ -54,6 +54,8 @@ export const odyboContextProvider: DictionaryProvider = {
     const sel = ctx.selection;
     // 整段上下文对不上时（比如在词典里点了另一个词），退回 Readest 自己算的前后文
     const mine = contextFor(word);
+    // 点单词透镜的小字查的：照样存答案，但记成 lens，不进生词本
+    const lensSource = mine?.fromLens ? ('lens' as const) : undefined;
     const before = (sel?.before ?? '').trim();
     const context = mine
       ? mine.context
@@ -70,7 +72,13 @@ export const odyboContextProvider: DictionaryProvider = {
     const rec = await findHistory(key);
     const hit = cache.get(key) ?? rec?.answer;
     // 又查了一次：刷新「最近查询」时间（生词本按它分栏；删掉的生词再查一次也会因此回来）
-    if (rec) void saveHistory({ ...rec, createdAt: Date.now() });
+    // 自己选中再查一次：原来是点透镜查的那条也改记成自己查的（这样才进生词本）
+    if (rec)
+      void saveHistory({
+        ...rec,
+        createdAt: Date.now(),
+        source: lensSource ?? (rec.source === 'lens' ? 'lookup' : rec.source),
+      });
     if (ctx.signal.aborted) return { ok: false, reason: 'error', message: 'aborted' };
     // 开了「本书自动预读」时，查完（不管是不是本机记录）就从这里往后预读；底部有开关和进度
     const prefetchFrom = () =>
@@ -184,7 +192,7 @@ export const odyboContextProvider: DictionaryProvider = {
         answer,
         model: translator.model ?? '',
         promptVersion: PROMPT_VERSION,
-        source: 'prefetch',
+        source: lensSource ?? 'prefetch',
         createdAt: Date.now(),
       });
     if (hit) {
@@ -243,7 +251,7 @@ export const odyboContextProvider: DictionaryProvider = {
           answer,
           model: translator.model ?? '',
           promptVersion: PROMPT_VERSION,
-          source: 'lookup',
+          source: lensSource ?? 'lookup',
           createdAt: Date.now(),
         });
       }

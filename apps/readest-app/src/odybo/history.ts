@@ -19,7 +19,8 @@ export interface HistoryRecord {
   model: string;
   /** 提示词的指纹：提示词改过以后，可以据此区分新旧答案 */
   promptVersion: string;
-  source: 'lookup' | 'prefetch';
+  /** lookup = 自己选中查的；prefetch = 用上了预读的答案；lens = 点单词透镜查的（不进生词本） */
+  source: 'lookup' | 'prefetch' | 'lens';
   createdAt: number;
 }
 

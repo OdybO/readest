@@ -9,6 +9,7 @@
 | `src/app/reader/components/annotator/DictionaryResultsView.tsx` | 我们的卡片查询中也显示（边出边显示）、不折叠成 4 行：`isOdyboStreamingProvider(p.id)` |
 | `apps/readest-app/.env.local`（不进 git，云编译时生成） | `NEXT_PUBLIC_SELF_HOSTED=true`，付费功能的开关全部打开 |
 | `src-tauri/gen/android/app/build.gradle.kts` | `applicationId = "com.odybo.readest"`，和官方版能同时装 |
+| `src/app/reader/components/annotator/Annotator.tsx` | 单词透镜点小字查词那条路上调用 `markWordLensLookup()`：这次查词记成 `lens`，不进生词本 |
 | `src/components/settings/SettingsDialog.tsx` | 设置窗口加一个「语境查词」标签（类型里加 `'Odybo'`、标签列表加一项、渲染 `OdyboSettingsPanel`、重置表加一项） |
 | `src/services/commandRegistry.ts` | 设置标签的图标表加 `Odybo`（类型要求每个标签都有图标） |
 | `.github/workflows/odybo-android.yml`（新文件） | 只编译 64 位 ARM 安卓版，手动触发；要仓库 Secrets：`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`、`ANDROID_KEY_BASE64` |

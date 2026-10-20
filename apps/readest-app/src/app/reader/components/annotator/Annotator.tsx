@@ -24,6 +24,7 @@ import { useCustomDictionaryStore } from '@/store/customDictionaryStore';
 import { isSystemDictionaryEnabled } from '@/services/dictionaries/registry';
 import { invokeSystemDictionary } from '@/services/dictionaries/systemDictionary';
 import { buildSelectionContext } from '@/services/dictionaries/contextDictionary';
+import { markWordLensLookup } from '@/odybo/selection';
 import type { DictionarySelectionContext } from '@/services/dictionaries/types';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
@@ -1373,6 +1374,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets; gridInsets?:
         // Route through handleDictionary so a Word Lens gloss tap honours the
         // dictionary settings (system dictionary vs the in-app popup) — same
         // as the selection-toolbar and instant-quick-action dictionary paths.
+        markWordLensLookup(); // [odybo] 点单词透镜查的词不进生词本（src/odybo/selection.ts）
         handleDictionary();
       } else if (
         enableAnnotationQuickActions &&

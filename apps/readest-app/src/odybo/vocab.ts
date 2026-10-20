@@ -111,7 +111,7 @@ export const loadVocab = async (): Promise<VocabEntry[]> => {
   const groups = new Map<string, VocabEntry & { lastAnswer: string }>();
   recs.sort((a, b) => a.createdAt - b.createdAt);
   for (const r of recs) {
-    if (!isVocab(r.word)) continue;
+    if (!isVocab(r.word) || r.source === 'lens') continue; // 点单词透镜查的不进生词本
     const lemma = lemmaOf(r);
     if (!lemma || lemma in ignored || r.createdAt <= (deleted[lemma] ?? 0)) continue;
     let g = groups.get(lemma);
