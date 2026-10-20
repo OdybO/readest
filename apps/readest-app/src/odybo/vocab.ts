@@ -87,6 +87,16 @@ const saveIgnored = (d: Record<string, number>) => {
     // 存不了就只在这次打开时有效
   }
 };
+export const undeleteVocab = (lemma: string) => {
+  const d = getDeleted();
+  delete d[lemma];
+  try {
+    localStorage.setItem(DELETED_KEY, JSON.stringify(d));
+  } catch {
+    // 存不了就只在这次打开时有效
+  }
+};
+export const isIgnored = (lemma: string) => lemma in getIgnored();
 export const ignoreVocab = (lemma: string) => saveIgnored({ ...getIgnored(), [lemma]: Date.now() });
 export const unignoreVocab = (lemma: string) => {
   const d = getIgnored();

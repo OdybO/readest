@@ -14,7 +14,15 @@ import { contextFor } from './selection';
 import { pickSentence, renderAnswer } from './render';
 import { findHistory, fingerprint, historyKey, saveHistory } from './history';
 import { getSettings } from './settings';
-import { deleteVocab, ignoreVocab, isVocab, lemmaOf } from './vocab';
+import {
+  deleteVocab,
+  ignoreVocab,
+  isIgnored,
+  isVocab,
+  lemmaOf,
+  undeleteVocab,
+  unignoreVocab,
+} from './vocab';
 import {
   findPrefetched,
   findPrefetchedWord,
@@ -80,29 +88,43 @@ export const odyboContextProvider: DictionaryProvider = {
     const setStatus = (t: string) => {
       if (statusEl) statusEl.textContent = t;
     };
+    // 答案下面画一条分隔线，下面是可操作的部分：生词按钮、本书自动预读
     const footer = (answer: string) => {
-      vocabButtons(answer);
-      if (!mine) return; // 没有整段上下文时不预读
+      const section = document.createElement('div');
+      Object.assign(section.style, {
+        borderTop: '1px solid color-mix(in srgb, currentColor 20%, transparent)',
+        marginTop: '12px',
+        paddingTop: '10px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px',
+        fontSize: '0.8em',
+      });
+      section.addEventListener('click', (e) => e.stopPropagation()); // 不让词典卡片把点击当成「展开」
+      vocabButtons(section, answer);
+      if (mine) prefetchRow(section); // 没有整段上下文时不预读
+      if (section.childElementCount) ctx.container.append(section);
+    };
+    const prefetchRow = (section: HTMLElement) => {
       const row = document.createElement('label');
       Object.assign(row.style, {
         display: 'flex',
         alignItems: 'center',
         gap: '6px',
-        marginTop: '8px',
-        fontSize: '0.75em',
-        opacity: '0.75',
+        cursor: 'pointer',
       });
       const box = document.createElement('input');
       box.type = 'checkbox';
+      box.className = 'checkbox checkbox-sm';
       box.checked = isAutoPrefetch(book);
       box.disabled = getSettings().prefetchAllBooks; // 设置里开了「所有书」时，这里不能单独关
-      box.addEventListener('click', (e) => e.stopPropagation()); // 不让词典卡片把点击当成「展开」
       box.addEventListener('change', () => {
         setAutoPrefetch(book, box.checked);
         if (box.checked) void prefetchFrom();
         else setStatus('');
       });
       statusEl = document.createElement('span');
+      statusEl.style.opacity = '0.7';
       row.append(
         box,
         document.createTextNode(
@@ -112,44 +134,44 @@ export const odyboContextProvider: DictionaryProvider = {
         ),
         statusEl,
       );
-      row.addEventListener('click', (e) => e.stopPropagation());
-      ctx.container.append(row);
+      section.append(row);
       if (box.checked) void prefetchFrom();
     };
-    // 查的是单词或短语：底下两个按钮——移出生词本（再查会回来）、忽略（再查也不进生词本）
-    const vocabButtons = (answer: string) => {
+    // 查的是单词或短语：两个开关按钮，按当前状态显示，点一下切换
+    //   生词本：在生词本里 ⇄ 已移出（移出后再查会回来）
+    //   忽略：没忽略 ⇄ 已忽略（忽略后再查也不进生词本）
+    const vocabButtons = (section: HTMLElement, answer: string) => {
       if (!isVocab(word) || !answer) return;
       const lemma = lemmaOf({ word, answer });
       if (!lemma) return;
       const row = document.createElement('div');
-      Object.assign(row.style, {
-        display: 'flex',
-        gap: '8px',
-        marginTop: '8px',
-        fontSize: '0.75em',
-      });
-      const msg = document.createElement('span');
-      msg.style.opacity = '0.7';
-      const mk = (label: string, act: () => void, done: string) => {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'btn btn-ghost btn-xs';
-        b.textContent = label;
-        b.addEventListener('click', (e) => {
-          e.stopPropagation();
-          act();
-          msg.textContent = done;
-          row.querySelectorAll('button').forEach((x) => ((x as HTMLButtonElement).disabled = true));
-        });
-        return b;
+      Object.assign(row.style, { display: 'flex', flexWrap: 'wrap', gap: '8px' });
+      let removed = false;
+      const btnVocab = document.createElement('button');
+      const btnIgnore = document.createElement('button');
+      const paint = () => {
+        const ignored = isIgnored(lemma);
+        btnVocab.textContent = removed ? `已移出生词本 · 点击放回` : '移出生词本';
+        btnVocab.className = `btn btn-sm ${removed ? 'btn-active' : 'btn-outline'}`;
+        btnVocab.disabled = ignored;
+        btnIgnore.textContent = ignored ? `已忽略 · 点击取消` : '忽略这个词';
+        btnIgnore.className = `btn btn-sm ${ignored ? 'btn-active' : 'btn-outline'}`;
       };
-      row.append(
-        mk('移出生词本', () => deleteVocab(lemma), `「${lemma}」已移出生词本，再查会回来`),
-        mk('忽略', () => ignoreVocab(lemma), `「${lemma}」已忽略，以后不进生词本`),
-        msg,
-      );
-      row.addEventListener('click', (e) => e.stopPropagation());
-      ctx.container.append(row);
+      for (const b of [btnVocab, btnIgnore]) b.type = 'button';
+      btnVocab.addEventListener('click', () => {
+        if (removed) undeleteVocab(lemma);
+        else deleteVocab(lemma);
+        removed = !removed;
+        paint();
+      });
+      btnIgnore.addEventListener('click', () => {
+        if (isIgnored(lemma)) unignoreVocab(lemma);
+        else ignoreVocab(lemma);
+        paint();
+      });
+      paint();
+      row.append(btnVocab, btnIgnore);
+      section.append(row);
     };
     // 预读的答案被用上了：也记进「自己查过的」（生词本才会算上这一次）
     const keep = (answer: string) =>
