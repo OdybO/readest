@@ -21,9 +21,11 @@ import {
   isIgnored,
   isVocab,
   lemmaOf,
+  loadVocab,
   undeleteVocab,
   unignoreVocab,
 } from './vocab';
+import { openVocabBook } from './SettingsPanel';
 import {
   findPrefetched,
   findPrefetchedWord,
@@ -74,11 +76,12 @@ export const odyboContextProvider: DictionaryProvider = {
     const hit = cache.get(key) ?? rec?.answer;
     // 又查了一次：刷新「最近查询」时间（生词本按它分栏；删掉的生词再查一次也会因此回来）
     // 自己选中再查一次：原来是点透镜查的那条也改记成自己查的（这样才进生词本）
+    // 点透镜又查一次：原来已经算自己查的（或点过「加入生词本」）就保持，不降回透镜
     if (rec)
       void saveHistory({
         ...rec,
         createdAt: Date.now(),
-        source: lensSource ?? (rec.source === 'lens' ? 'lookup' : rec.source),
+        source: rec.source === 'lens' ? (lensSource ?? 'lookup') : rec.source,
       }).then(() => remarkOpenDocs(book)); // 透镜那条改成自己查的：书里补标
     if (ctx.signal.aborted) return { ok: false, reason: 'error', message: 'aborted' };
     // 开了「本书自动预读」时，查完（不管是不是本机记录）就从这里往后预读；底部有开关和进度
@@ -146,8 +149,9 @@ export const odyboContextProvider: DictionaryProvider = {
       section.append(row);
       if (box.checked) void prefetchFrom();
     };
-    // 查的是单词或短语：两个开关按钮，按当前状态显示，点一下切换
+    // 查的是单词或短语：两个开关按钮，按当前状态显示，点一下切换；最右边「生词本」直接打开生词本
     //   生词本：在生词本里 ⇄ 已移出（移出后再查会回来）
+    //     点透镜查的、生词本里还没有这个词：显示「加入生词本」，点了这一次就算自己查的
     //   忽略：没忽略 ⇄ 已忽略（忽略后再查也不进生词本）
     const vocabButtons = (section: HTMLElement, answer: string) => {
       if (!isVocab(word) || !answer) return;
@@ -156,21 +160,54 @@ export const odyboContextProvider: DictionaryProvider = {
       const row = document.createElement('div');
       Object.assign(row.style, { display: 'flex', flexWrap: 'wrap', gap: '8px' });
       let removed = false;
+      let notIn = false; // 点透镜查的，生词本里没有这个词
       const btnVocab = document.createElement('button');
       const btnIgnore = document.createElement('button');
+      const btnBook = document.createElement('button');
       const paint = () => {
         const ignored = isIgnored(lemma);
-        btnVocab.textContent = removed ? `已移出生词本 · 点击放回` : '移出生词本';
+        btnVocab.textContent = notIn
+          ? '加入生词本'
+          : removed
+            ? `已移出生词本 · 点击放回`
+            : '移出生词本';
         btnVocab.className = `btn btn-sm ${removed ? 'btn-active' : 'btn-outline'}`;
         btnVocab.disabled = ignored;
         btnIgnore.textContent = ignored ? `已忽略 · 点击取消` : '忽略这个词';
         btnIgnore.className = `btn btn-sm ${ignored ? 'btn-active' : 'btn-outline'}`;
       };
-      for (const b of [btnVocab, btnIgnore]) b.type = 'button';
+      for (const b of [btnVocab, btnIgnore, btnBook]) b.type = 'button';
+      btnBook.textContent = '生词本';
+      btnBook.className = 'btn btn-sm btn-outline';
+      btnBook.style.marginInlineStart = 'auto'; // 靠最右
+      btnBook.addEventListener('click', () => openVocabBook());
+      if (lensSource)
+        void loadVocab().then((list) => {
+          notIn = !list.some((e) => e.lemma === lemma);
+          paint();
+        });
       btnVocab.addEventListener('click', () => {
-        if (removed) undeleteVocab(lemma);
-        else deleteVocab(lemma);
-        removed = !removed;
+        if (notIn) {
+          // 加入生词本：这一次改记成自己查的
+          notIn = false;
+          undeleteVocab(lemma);
+          void saveHistory({
+            key,
+            book,
+            word,
+            sentence,
+            context,
+            answer,
+            model: translator.model ?? '',
+            promptVersion: PROMPT_VERSION,
+            source: 'lookup',
+            createdAt: Date.now(),
+          }).then(() => remarkOpenDocs(book));
+        } else {
+          if (removed) undeleteVocab(lemma);
+          else deleteVocab(lemma);
+          removed = !removed;
+        }
         paint();
       });
       btnIgnore.addEventListener('click', () => {
@@ -180,7 +217,7 @@ export const odyboContextProvider: DictionaryProvider = {
         remarkOpenDocs(book); // 忽略了的词书里不标
       });
       paint();
-      row.append(btnVocab, btnIgnore);
+      row.append(btnVocab, btnIgnore, btnBook);
       section.append(row);
     };
     // 预读的答案被用上了：也记进「自己查过的」（生词本才会算上这一次）

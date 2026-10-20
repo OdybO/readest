@@ -56,7 +56,11 @@ const textModel = (doc: Document) => {
   const root = doc.body ?? doc.documentElement;
   const segs: { node: Text; start: number }[] = [];
   let text = '';
-  if (!root) return { text, locate: () => null as { node: Text; offset: number } | null };
+  if (!root)
+    return {
+      text,
+      locate: (_offset: number, _atEnd?: boolean) => null as { node: Text; offset: number } | null,
+    };
   const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode: (n) =>
       (n as Text).parentElement?.closest('rt, rp, script, style')
@@ -69,10 +73,11 @@ const textModel = (doc: Document) => {
     segs.push({ node: t, start: text.length });
     text += t.data;
   }
-  const locate = (offset: number) => {
+  // atEnd：找的是词尾，正好落在两个文字块交界处时算前一块（透镜包好的词，词尾就是它那块的末尾）
+  const locate = (offset: number, atEnd = false) => {
     let found: { node: Text; start: number } | null = null;
     for (const s of segs) {
-      if (s.start <= offset) found = s;
+      if (atEnd ? s.start < offset : s.start <= offset) found = s;
       else break;
     }
     return found ? { node: found.node, offset: offset - found.start } : null;
@@ -127,7 +132,7 @@ export const markVocabInDoc = async (doc: Document, book: string) => {
     targets.sort((a, b) => b.start - a.start);
     for (const t of targets) {
       const s = model.locate(t.start);
-      const e = model.locate(t.end);
+      const e = model.locate(t.end, true);
       if (!s || !e || s.node !== e.node) continue;
       const gloss = st.vocabMarkStyle === 'gloss';
       const label = gloss ? meaningOf(t.rec.answer) || '●' : '●';

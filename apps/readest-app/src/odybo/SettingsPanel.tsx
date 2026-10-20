@@ -7,6 +7,18 @@ import VocabPage from './VocabPage';
 import { BoxedList } from '@/components/settings/primitives';
 import { Toggle } from '@/components/primitives/toggle';
 import { DEFAULT_SETTINGS, getSettings, saveSettings, type OdyboSettings } from './settings';
+import { useSettingsStore } from '@/store/settingsStore';
+import { useReaderStore } from '@/store/readerStore';
+
+/** 查词卡片上的「生词本」按钮：打开设置窗口，直接到「语境查词 → 生词本」。 */
+let openVocabNext = false;
+export const openVocabBook = () => {
+  openVocabNext = true;
+  const st = useSettingsStore.getState();
+  st.setSettingsDialogBookKey(useReaderStore.getState().bookKeys[0] ?? '');
+  st.setRequestedPanel('Odybo');
+  st.setSettingsDialogOpen(true);
+};
 
 /** 一行设置：名字 + ⓘ（点开说明）+ 右边的控件；说明显示在这一行下面。 */
 const Row: React.FC<{ label: string; tip: string; children: React.ReactNode }> = ({
@@ -72,7 +84,11 @@ const Stepper: React.FC<{
 
 const OdyboSettingsPanel: React.FC = () => {
   const [s, setS] = useState<OdyboSettings>(() => getSettings());
-  const [page, setPage] = useState<'main' | 'vocab'>('main');
+  const [page, setPage] = useState<'main' | 'vocab'>(() => {
+    const v = openVocabNext;
+    openVocabNext = false;
+    return v ? 'vocab' : 'main';
+  });
   const update = (patch: Partial<OdyboSettings>) => {
     const next = { ...s, ...patch };
     setS(next);

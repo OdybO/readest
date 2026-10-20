@@ -13,6 +13,8 @@ interface Remembered {
   fromLens: boolean;
   /** 选中处在 context 里的位置，-1 = 不知道 */
   at: number;
+  /** 记下的时间 */
+  time: number;
 }
 
 let last: Remembered | null = null;
@@ -34,8 +36,11 @@ export const rememberSelection = (range: Range) => {
   try {
     const text = range.toString();
     const info: { text: string; at: number } = buildContextInfo(range, { maxChars: MAX_CHARS });
+    // 一次查词这里会被调两次：紧接着又记同一个词时，保留上一次的「点透镜查的」
+    const again = !!last && last.text === norm(text) && Date.now() - last.time < 2000;
+    const fromLens = lensPending || (again && last!.fromLens);
     last = info.text
-      ? { text: norm(text), context: info.text, at: info.at, fromLens: lensPending }
+      ? { text: norm(text), context: info.text, at: info.at, fromLens, time: Date.now() }
       : null;
     lensPending = false;
   } catch (e) {
