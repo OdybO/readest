@@ -122,6 +122,15 @@ export const listByBook = async <T>(store: string, book: string): Promise<T[]> =
   }
 };
 
+export const listAll = async <T>(store: string): Promise<T[]> => {
+  try {
+    return await run<T[]>(store, 'readonly', (s) => s.getAll());
+  } catch (e) {
+    console.warn('[odybo] 读本机记录失败', e);
+    return [];
+  }
+};
+
 export const countRecords = async (store: string): Promise<number> => {
   try {
     return await run<number>(store, 'readonly', (s) => s.count());

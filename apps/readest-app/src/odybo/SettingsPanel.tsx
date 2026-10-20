@@ -2,6 +2,8 @@
 // 用 Readest 的设置卡片样式；说明收在名字右边的 ⓘ 里，点一下才显示。以后生词本的设置也放这里。
 import React, { useState } from 'react';
 import { FiInfo, FiMinus, FiPlus } from 'react-icons/fi';
+import { MdChevronRight } from 'react-icons/md';
+import VocabPage from './VocabPage';
 import { BoxedList } from '@/components/settings/primitives';
 import { Toggle } from '@/components/primitives/toggle';
 import { DEFAULT_SETTINGS, getSettings, saveSettings, type OdyboSettings } from './settings';
@@ -70,14 +72,28 @@ const Stepper: React.FC<{
 
 const OdyboSettingsPanel: React.FC = () => {
   const [s, setS] = useState<OdyboSettings>(() => getSettings());
+  const [page, setPage] = useState<'main' | 'vocab'>('main');
   const update = (patch: Partial<OdyboSettings>) => {
     const next = { ...s, ...patch };
     setS(next);
     saveSettings(next);
   };
 
+  if (page === 'vocab') return <VocabPage onBack={() => setPage('main')} />;
+
   return (
     <div className='my-4 w-full space-y-6'>
+      <BoxedList>
+        <button
+          type='button'
+          className='flex min-h-14 w-full items-center justify-between pe-4 text-start'
+          onClick={() => setPage('vocab')}
+        >
+          <span className='settings-content'>生词本</span>
+          <MdChevronRight className='text-base-content/50 h-5 w-5' />
+        </button>
+      </BoxedList>
+
       <BoxedList title='句子预读'>
         <Row label='预读截数' tip='提前查询后面 N 截。短句一整句为一截，长句按逗号分成几截。'>
           <Stepper

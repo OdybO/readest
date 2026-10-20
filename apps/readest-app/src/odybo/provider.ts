@@ -52,7 +52,10 @@ export const odyboContextProvider: DictionaryProvider = {
     // 查过没有：同一本书 + 同一个选中的内容 + 同一句（找不到所在句时用整段上下文代替）
     const book = [sel?.bookTitle, sel?.bookAuthor].filter(Boolean).join(' / ');
     const key = historyKey(book, word, sentence || context);
-    const hit = cache.get(key) ?? (await findHistory(key))?.answer;
+    const rec = await findHistory(key);
+    const hit = cache.get(key) ?? rec?.answer;
+    // 又查了一次：刷新「最近查询」时间（生词本按它分栏；删掉的生词再查一次也会因此回来）
+    if (rec) void saveHistory({ ...rec, createdAt: Date.now() });
     if (ctx.signal.aborted) return { ok: false, reason: 'error', message: 'aborted' };
     // 开了「本书自动预读」时，查完（不管是不是本机记录）就从这里往后预读；底部有开关和进度
     const prefetchFrom = () =>
