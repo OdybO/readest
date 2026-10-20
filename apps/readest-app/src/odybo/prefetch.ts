@@ -1,6 +1,6 @@
 // 预读：照电脑小工具（ctx_lookup.py 的 rolling_prefetch / reading_units / prefetch_find）。
 // 在开了「本书自动预读」的书里查过东西后，后台把选中位置往后 3 截提前查好，存进本机（history.ts 的 prefetch）。
-// 一截 = 一个意群：20 个词以内的句子整句一截；长句在逗号、分号等处切成 8～20 词的几截，整句也另外预读一份。
+// 一截 = 一个意群：短句（不超过设置里的「短句长度」，默认 20 个词）整句一截；长句在逗号、分号等处切成 8～20 词的几截，整句也另外预读一份。
 // 只预读句子和截，不预读单个的词（单词预读以后专门讨论）。
 import type { CustomTranslator } from '@/types/translation';
 import {
@@ -9,7 +9,7 @@ import {
   stripReasoning,
 } from '@/services/translators/custom/openaiCompatible';
 import { ODYBO_SYSTEM_PROMPT } from './prompt';
-import { getSettings } from './settings';
+import { PREFETCH_PARALLEL, getSettings } from './settings';
 import {
   PREFETCH,
   getRecord,
@@ -21,7 +21,6 @@ import {
 } from './history';
 
 // 往后预读几截、同时几个请求：在「语境查词」设置页里改（settings.ts），默认都是 3，和小工具一样
-const LONG_SENT = 20;
 
 // ---------- 本书自动预读的开关（每本书单独记，默认关，和小工具一样） ----------
 
@@ -86,7 +85,7 @@ const STARTERS = new Set(
 /** 长句切成意群：凑够 8 个词后遇到逗号、分号、冒号、破折号就断；太长还没断，就在 and / which 这类词前面断。 */
 export const splitChunks = (sent: string, minW = 8, maxW = 20) => {
   const words = sent.split(/\s+/);
-  if (words.length <= LONG_SENT) return [sent];
+  if (words.length <= getSettings().shortSentenceWords) return [sent];
   const chunks: string[] = [];
   let cur: string[] = [];
   words.forEach((w, i) => {
@@ -134,7 +133,7 @@ const running = new Set<string>();
 let active = 0;
 const waiters: (() => void)[] = [];
 const acquire = async () => {
-  while (active >= getSettings().prefetchParallel) await new Promise<void>((r) => waiters.push(r));
+  while (active >= PREFETCH_PARALLEL) await new Promise<void>((r) => waiters.push(r));
   active++;
 };
 const release = () => {
