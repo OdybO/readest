@@ -8,6 +8,8 @@
 | `src/services/dictionaries/contextDictionary.ts` | `buildSelectionContext` 开头调用 `rememberSelection(range)`，另外记一份整段上下文 |
 | `src/app/reader/components/annotator/DictionaryResultsView.tsx` | 我们的卡片查询中也显示（边出边显示）、不折叠成 4 行：`isOdyboStreamingProvider(p.id)` |
 | `apps/readest-app/.env.local`（不进 git，云编译时生成） | `NEXT_PUBLIC_SELF_HOSTED=true`，付费功能的开关全部打开 |
+| `src-tauri/gen/android/app/build.gradle.kts` | `applicationId = "com.odybo.readest"`，和官方版能同时装 |
+| `.github/workflows/odybo-android.yml`（新文件） | 只编译 64 位 ARM 安卓版，手动触发；要仓库 Secrets：`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`、`ANDROID_KEY_BASE64` |
 
 ## 文件
 

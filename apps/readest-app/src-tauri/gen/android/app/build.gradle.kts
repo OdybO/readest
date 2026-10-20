@@ -47,7 +47,8 @@ android {
                         ?.substringAfter("=")?.trim()?.trim('"', '\'')?.takeIf { it.isNotEmpty() }
                 }
             ?: ""
-        applicationId = "com.bilingify.readest"
+        // [odybo] 自己的包名，和官方 Readest 能同时装（namespace 不动，代码包名还是 com.bilingify.readest）
+        applicationId = "com.odybo.readest"
         minSdk = 26
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
