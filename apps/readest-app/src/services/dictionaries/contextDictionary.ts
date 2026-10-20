@@ -8,6 +8,7 @@
  */
 import type { CustomTranslator } from '@/types/translation';
 import { md5Fingerprint } from '@/utils/md5';
+import { rememberSelection } from '@/odybo/selection';
 import { renderPrompt } from '@/services/translators/custom/prompts';
 import {
   createChatModel,
@@ -75,6 +76,7 @@ export const buildSelectionContext = (
   range: Range,
   maxChars = 1000,
 ): { before: string; after: string } => {
+  rememberSelection(range); // [odybo] 另外记一份整段上下文（src/odybo/selection.ts）
   const doc = range.startContainer.ownerDocument!;
   const first = blockOf(range.startContainer);
   const last = blockOf(range.endContainer);
