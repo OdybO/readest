@@ -14,6 +14,7 @@ import { contextFor } from './selection';
 import { pickSentence, renderAnswer } from './render';
 import { findHistory, fingerprint, historyKey, saveHistory } from './history';
 import { getSettings } from './settings';
+import { remarkOpenDocs } from './marks';
 import {
   deleteVocab,
   ignoreVocab,
@@ -78,7 +79,7 @@ export const odyboContextProvider: DictionaryProvider = {
         ...rec,
         createdAt: Date.now(),
         source: lensSource ?? (rec.source === 'lens' ? 'lookup' : rec.source),
-      });
+      }).then(() => remarkOpenDocs(book)); // 透镜那条改成自己查的：书里补标
     if (ctx.signal.aborted) return { ok: false, reason: 'error', message: 'aborted' };
     // 开了「本书自动预读」时，查完（不管是不是本机记录）就从这里往后预读；底部有开关和进度
     const prefetchFrom = () =>
@@ -176,6 +177,7 @@ export const odyboContextProvider: DictionaryProvider = {
         if (isIgnored(lemma)) unignoreVocab(lemma);
         else ignoreVocab(lemma);
         paint();
+        remarkOpenDocs(book); // 忽略了的词书里不标
       });
       paint();
       row.append(btnVocab, btnIgnore);
@@ -253,7 +255,7 @@ export const odyboContextProvider: DictionaryProvider = {
           promptVersion: PROMPT_VERSION,
           source: lensSource ?? 'lookup',
           createdAt: Date.now(),
-        });
+        }).then(() => remarkOpenDocs(book)); // 刚查的词在书里标出来
       }
       return { ok: true, headword: word, sourceLabel: translator.name };
     } catch (err) {

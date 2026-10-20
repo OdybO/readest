@@ -1,11 +1,13 @@
 // 在书里标出预读过的生词：照单词透镜的做法，把词包成 <ruby class="wl-gloss odybo-vocab">词<rt>标注</rt></ruby>。
 // 标注是这一句里的解释（「生词标法」= 解释），或一个带颜色的点（= 点）。
 // 用透镜的 class（wl-gloss），点一下就走透镜那条路：Readest 替你选中这个词再查，出来的是我们的语境查词。
-// 只标「生词预读」预读过的那些（同一本书、同一个词、同一句），所以解释一定是这一句里的意思。
+// 标两种：「生词预读」预读过的（同一本书、同一个词、同一句），和自己查过的单词、短语（点透镜查的不算，透镜自己有小字）。
+// 都是按那一句存的，所以解释一定是这一句里的意思。忽略了的词不标。
 // 只用于 EPUB 这类能重排的书（和透镜一样，PDF 不做）。
 // 接入点：FoliateViewer.tsx 每次透镜刷新完一章后调用 markVocabInDoc(doc, book)。
-import { PREFETCH, listByBook, type PrefetchRecord } from './history';
+import { HISTORY, PREFETCH, listByBook, type HistoryRecord, type PrefetchRecord } from './history';
 import { getSettings } from './settings';
+import { isIgnored, isVocab, lemmaOf } from './vocab';
 
 const OUR_CLASS = 'odybo-vocab';
 const LENS_CLASS = 'wl-gloss';
@@ -93,14 +95,19 @@ export const markVocabInDoc = async (doc: Document, book: string) => {
     clearOurs(doc);
     const st = getSettings();
     if (!st.vocabPrefetch) return; // 生词预读关着：不标
-    const recs = (await listByBook<PrefetchRecord>(PREFETCH, book)).filter(
-      (r) => r.kind === 'word',
+    const pre = (await listByBook<PrefetchRecord>(PREFETCH, book)).filter((r) => r.kind === 'word');
+    const own = (await listByBook<HistoryRecord>(HISTORY, book))
+      .filter((r) => r.source !== 'lens' && r.sentence && isVocab(r.word))
+      .map((r) => ({ text: r.word, sentence: r.sentence, answer: r.answer }));
+    const recs = [...own, ...pre].filter(
+      (r) => !isIgnored(lemmaOf({ word: r.text, answer: r.answer })),
     );
     if (!recs.length || !doc.defaultView) return;
     clearOurs(doc); // 等记录的这段时间里可能又标过一次
     const model = textModel(doc);
     const lower = model.text.toLowerCase();
-    const targets: { start: number; end: number; rec: PrefetchRecord }[] = [];
+    const targets: { start: number; end: number; rec: { answer: string } }[] = [];
+    const taken = new Set<number>(); // 自己查过、又预读过的同一处只标一次
     for (const rec of recs) {
       const words = rec.sentence.split(/\s+/).filter(Boolean).map(escRe);
       if (!words.length) continue;
@@ -112,6 +119,8 @@ export const markVocabInDoc = async (doc: Document, book: string) => {
       );
       if (!wm) continue;
       const start = sm.index + wm.index;
+      if (taken.has(start)) continue;
+      taken.add(start);
       targets.push({ start, end: start + wm[0].length, rec });
     }
     // 从后往前包，前面的位置不受影响
