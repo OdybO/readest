@@ -316,7 +316,9 @@ export const findPrefetched = async (book: string, selection: string) => {
     r.kind === 'chunk' ? r.answer + (await wholeSentenceTail(book, r.sentence)) : r.answer;
   if (exact) return { answer: await withWhole(exact), note: '预读' };
   const all = await listByBook<PrefetchRecord>(PREFETCH, book);
-  const outer = all.filter((r) => r.kind !== 'word' && contains(n(r.text), ns));
+  const outer = all.filter(
+    (r) => r.kind !== 'word' && r.kind !== 'intro' && contains(n(r.text), ns),
+  );
   if (!outer.length) return null;
   const r = outer.reduce((a, b) => (n(a.text).length <= n(b.text).length ? a : b));
   if (ns.split(' ').length < 0.5 * n(r.text).split(' ').length) return null;

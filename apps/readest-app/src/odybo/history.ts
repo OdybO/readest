@@ -32,8 +32,8 @@ export interface PrefetchRecord {
   book: string;
   /** 这一截的原文 */
   text: string;
-  /** 'chunk' = 长句里的一截，'sent' = 整句，'word' = 生词在这一句里 */
-  kind: 'chunk' | 'sent' | 'word';
+  /** 'chunk' = 长句里的一截，'sent' = 整句，'word' = 生词在这一句里，'intro' = 这本书的介绍（bookIntro.ts） */
+  kind: 'chunk' | 'sent' | 'word' | 'intro';
   /** 所在的整句（chunk 用它去找整句的翻译） */
   sentence: string;
   para: string;

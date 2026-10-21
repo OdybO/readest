@@ -13,6 +13,7 @@ import { saveViewSettings } from '@/helpers/settings';
 import { getSettings, saveSettings, type OdyboSettings } from './settings';
 import { isAutoPrefetch, setAutoPrefetch } from './prefetch';
 import { odyboBookName, remarkOpenDocs } from './marks';
+import BookIntroDialog from './BookIntroDialog';
 
 const Row: React.FC<{ label: string; tip?: string; children: React.ReactNode }> = ({
   label,
@@ -28,7 +29,11 @@ const Row: React.FC<{ label: string; tip?: string; children: React.ReactNode }> 
   </div>
 );
 
-const Panel: React.FC<{ bookKey: string; onClose: () => void }> = ({ bookKey, onClose }) => {
+const Panel: React.FC<{ bookKey: string; onClose: () => void; onIntro: () => void }> = ({
+  bookKey,
+  onClose,
+  onIntro,
+}) => {
   const { envConfig } = useEnv();
   const { getViewSettings } = useReaderStore();
   const { getBookData } = useBookDataStore();
@@ -51,6 +56,16 @@ const Panel: React.FC<{ bookKey: string; onClose: () => void }> = ({ bookKey, on
         onClick={(e) => e.stopPropagation()}
       >
         <div className='mb-2 text-sm font-semibold'>语境查词</div>
+        <button
+          type='button'
+          className='btn btn-sm btn-outline mb-2 w-full'
+          onClick={() => {
+            onClose();
+            onIntro();
+          }}
+        >
+          这本书的介绍
+        </button>
         <Row label='显示透镜' tip='Readest 自带的难词小字'>
           <Toggle
             checked={lens}
@@ -118,6 +133,7 @@ const OdyboToolbarButton: React.FC<{ bookKey: string; className?: string }> = ({
   className,
 }) => {
   const [open, setOpen] = useState(false);
+  const [intro, setIntro] = useState(false);
   return (
     <>
       <Button
@@ -126,7 +142,10 @@ const OdyboToolbarButton: React.FC<{ bookKey: string; className?: string }> = ({
         icon={<PiBookOpenText className={open ? 'text-blue-500' : ''} />}
         onClick={() => setOpen(!open)}
       />
-      {open && <Panel bookKey={bookKey} onClose={() => setOpen(false)} />}
+      {open && (
+        <Panel bookKey={bookKey} onClose={() => setOpen(false)} onIntro={() => setIntro(true)} />
+      )}
+      {intro && <BookIntroDialog bookKey={bookKey} onClose={() => setIntro(false)} />}
     </>
   );
 };

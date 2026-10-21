@@ -3,15 +3,17 @@
 //   system.txt      主提示词（发给 AI 的 system）
 //   chunk.txt       选中长句里的一截时附在后面的要求
 //   vocab_hint.txt  预读时的生词提醒，{words} 换成这里出现的生词
+//   book_intro.txt  「书的介绍」的提示词（bookIntro.ts）
 // 读到的存在本机 localStorage（odybo.prompts），连不上时用上次读到的；一次都没读到、或某个文件没有，就用 App 自带的（prompt.ts）。
 // 用 Readest 自己的 WebDAV 地址、账号和读文件函数（services/sync/providers/webdav/client.ts），不另外设置。
 // 状态库和 WebDAV 函数用到时再加载：这个文件会被 provider.ts 引用，见 vocabLink.ts 的说明。
-import { CHUNK_RULE, ODYBO_SYSTEM_PROMPT, VOCAB_HINT } from './prompt';
+import { BOOK_INTRO_PROMPT, CHUNK_RULE, ODYBO_SYSTEM_PROMPT, VOCAB_HINT } from './prompt';
 
 export interface Prompts {
   system: string;
   chunk: string;
   vocabHint: string;
+  bookIntro: string;
   /** webdav = 至少一个文件是从 WebDAV 读的 */
   source: 'builtin' | 'webdav';
   /** 上次从 WebDAV 读到的时间 */
@@ -19,13 +21,19 @@ export interface Prompts {
 }
 
 const KEY = 'odybo.prompts';
-const FILES = { system: 'system.txt', chunk: 'chunk.txt', vocabHint: 'vocab_hint.txt' } as const;
+const FILES = {
+  system: 'system.txt',
+  chunk: 'chunk.txt',
+  vocabHint: 'vocab_hint.txt',
+  bookIntro: 'book_intro.txt',
+} as const;
 const REFRESH_MS = 10 * 60_000; // 最多 10 分钟读一次
 
 const BUILTIN: Prompts = {
   system: ODYBO_SYSTEM_PROMPT,
   chunk: CHUNK_RULE,
   vocabHint: VOCAB_HINT,
+  bookIntro: BOOK_INTRO_PROMPT,
   source: 'builtin',
 };
 
