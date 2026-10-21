@@ -9,7 +9,7 @@ const MAX_CHARS = 2000;
 interface Remembered {
   text: string;
   context: string;
-  /** 这次是点单词透镜的小字查的（不进生词本） */
+  /** 这次是点单词透镜的小字查的（只记来源；10-21 起也进生词本） */
   fromLens: boolean;
   /** 选中处在 context 里的位置，-1 = 不知道 */
   at: number;

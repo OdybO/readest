@@ -173,6 +173,9 @@ export const renderAnswer = (
     for (const line of sec.lines) {
       if (LIST_SECTIONS.has(sec.label)) {
         root.append(phraseLine(line, c, phrases, sec.label));
+      } else if (sec.label === '翻译' && /^补充[：:]/.test(line.trim())) {
+        // 选中长句一截时切断了词组，AI 在翻译下面写的「补充」（prompt.ts 的 CHUNK_RULE）：小一号、浅色，和翻译分开
+        root.append(el('div', line, { color: c.dim, fontSize: '0.9em', marginTop: '2px' }));
       } else if (sec.label === '这里的意思' || sec.label === '翻译') {
         root.append(el('div', line, { color: c.main, fontWeight: '700', fontSize: '1.1em' }));
       } else if (sec.label === '整句翻译') {

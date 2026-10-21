@@ -1,13 +1,13 @@
 // 在书里标出预读过的生词：照单词透镜的做法，把词包成 <ruby class="wl-gloss odybo-vocab">词<rt>标注</rt></ruby>。
 // 标注是这一句里的解释（「生词标法」= 解释），或一个带颜色的点（= 点）。
 // 用透镜的 class（wl-gloss），点一下就走透镜那条路：Readest 替你选中这个词再查，出来的是我们的语境查词。
-// 标两种：「生词预读」预读过的（同一本书、同一个词、同一句），和自己查过的单词、短语（点透镜查的不算，透镜自己有小字）。
-// 都是按那一句存的，所以解释一定是这一句里的意思。忽略了的词不标。
+// 标两种：「生词预读」预读过的（同一本书、同一个词、同一句），和自己查过的单词、短语（点透镜小字查的也算，换掉透镜的小字）。
+// 都是按那一句存的，所以解释一定是这一句里的意思。忽略了的词不标，移出生词本的词在移出之前的记录不标。
 // 只用于 EPUB 这类能重排的书（和透镜一样，PDF 不做）。
 // 接入点：FoliateViewer.tsx 每次透镜刷新完一章后调用 markVocabInDoc(doc, book)。
 import { HISTORY, PREFETCH, listByBook, type HistoryRecord, type PrefetchRecord } from './history';
 import { getSettings } from './settings';
-import { isIgnored, isVocab, lemmaOf } from './vocab';
+import { isDeletedBefore, isIgnored, isVocab, lemmaOf } from './vocab';
 
 const OUR_CLASS = 'odybo-vocab';
 const LENS_CLASS = 'wl-gloss';
@@ -23,9 +23,13 @@ const meaningOf = (answer: string) => {
   const m = answer.match(/【这里的意思】\s*(.*)/) ?? answer.match(/【翻译】\s*(.*)/);
   const first = (m?.[1] ?? '')
     .trim()
-    .split(/[，；,;、（(]/)[0]!
+    .split(/[，；,;（(]/)[0]!
     .trim();
-  return first.length > 8 ? `${first.slice(0, 8)}…` : first;
+  // 「、」隔开的是几个近义说法，第一个不一定对（bores：「令人讨厌、厌烦的人」只取前一个就错了）：
+  // 10 个字以内整个留下；更长就在 10 个字以内最后一个「、」处截；没有「、」就截 8 个字加省略号（10-21 用真 AI 的回答核对过）
+  if (first.length <= 10) return first;
+  const cut = first.lastIndexOf('、', 10);
+  return cut > 0 ? first.slice(0, cut) : `${first.slice(0, 8)}…`;
 };
 
 /** 去掉我们上一次的标注（透镜的不动；原来是透镜的，还原成透镜的样子） */
@@ -102,11 +106,13 @@ export const markVocabInDoc = async (doc: Document, book: string) => {
     if (!st.vocabPrefetch) return; // 生词预读关着：不标
     const pre = (await listByBook<PrefetchRecord>(PREFETCH, book)).filter((r) => r.kind === 'word');
     const own = (await listByBook<HistoryRecord>(HISTORY, book))
-      .filter((r) => r.source !== 'lens' && r.sentence && isVocab(r.word))
-      .map((r) => ({ text: r.word, sentence: r.sentence, answer: r.answer }));
-    const recs = [...own, ...pre].filter(
-      (r) => !isIgnored(lemmaOf({ word: r.text, answer: r.answer })),
-    );
+      .filter((r) => r.sentence && isVocab(r.word))
+      .map((r) => ({ text: r.word, sentence: r.sentence, answer: r.answer, at: r.createdAt }));
+    // 忽略了的不标；移出生词本的，移出之前的记录不标（再查一次又会标）
+    const recs = [...own, ...pre.map((r) => ({ ...r, at: r.createdAt }))].filter((r) => {
+      const lemma = lemmaOf({ word: r.text, answer: r.answer });
+      return !isIgnored(lemma) && !isDeletedBefore(lemma, r.at);
+    });
     if (!recs.length || !doc.defaultView) return;
     clearOurs(doc); // 等记录的这段时间里可能又标过一次
     const model = textModel(doc);

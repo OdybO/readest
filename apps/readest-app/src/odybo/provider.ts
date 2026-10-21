@@ -21,7 +21,6 @@ import {
   isIgnored,
   isVocab,
   lemmaOf,
-  loadVocab,
   undeleteVocab,
   unignoreVocab,
 } from './vocab';
@@ -57,7 +56,7 @@ export const odyboContextProvider: DictionaryProvider = {
     const sel = ctx.selection;
     // 整段上下文对不上时（比如在词典里点了另一个词），退回 Readest 自己算的前后文
     const mine = contextFor(word);
-    // 点单词透镜的小字查的：照样存答案，但记成 lens，不进生词本
+    // 点单词透镜的小字查的：记成 lens（只是记一下来源；10-21 起透镜查的也进生词本）
     const lensSource = mine?.fromLens ? ('lens' as const) : undefined;
     const before = (sel?.before ?? '').trim();
     const context = mine
@@ -155,7 +154,7 @@ export const odyboContextProvider: DictionaryProvider = {
     };
     // 查的是单词或短语：两个开关按钮，按当前状态显示，点一下切换；最右边「生词本」直接打开生词本
     //   生词本：在生词本里 ⇄ 已移出（移出后再查会回来）
-    //     点透镜查的、生词本里还没有这个词：显示「加入生词本」，点了这一次就算自己查的
+    //     点透镜小字查的也算（开发者 10-21：划词、点透镜都说明不认识），不用另外「加入生词本」
     //   忽略：没忽略 ⇄ 已忽略（忽略后再查也不进生词本）
     const vocabButtons = (section: HTMLElement, answer: string) => {
       if (!isVocab(word) || !answer) return;
@@ -164,17 +163,12 @@ export const odyboContextProvider: DictionaryProvider = {
       const row = document.createElement('div');
       Object.assign(row.style, { display: 'flex', flexWrap: 'wrap', gap: '8px' });
       let removed = false;
-      let notIn = false; // 点透镜查的，生词本里没有这个词
       const btnVocab = document.createElement('button');
       const btnIgnore = document.createElement('button');
       const btnBook = document.createElement('button');
       const paint = () => {
         const ignored = isIgnored(lemma);
-        btnVocab.textContent = notIn
-          ? '加入生词本'
-          : removed
-            ? `已移出生词本 · 点击放回`
-            : '移出生词本';
+        btnVocab.textContent = removed ? `已移出生词本 · 点击放回` : '移出生词本';
         btnVocab.className = `btn btn-sm ${removed ? 'btn-active' : 'btn-outline'}`;
         btnVocab.disabled = ignored;
         btnIgnore.textContent = ignored ? `已忽略 · 点击取消` : '忽略这个词';
@@ -185,34 +179,12 @@ export const odyboContextProvider: DictionaryProvider = {
       btnBook.className = 'btn btn-sm btn-outline';
       btnBook.style.marginInlineStart = 'auto'; // 靠最右
       btnBook.addEventListener('click', () => void openVocabBook());
-      if (lensSource)
-        void loadVocab().then((list) => {
-          notIn = !list.some((e) => e.lemma === lemma);
-          paint();
-        });
       btnVocab.addEventListener('click', () => {
-        if (notIn) {
-          // 加入生词本：这一次改记成自己查的
-          notIn = false;
-          undeleteVocab(lemma);
-          void saveHistory({
-            key,
-            book,
-            word,
-            sentence,
-            context,
-            answer,
-            model: translator.model ?? '',
-            promptVersion: PROMPT_VERSION,
-            source: 'lookup',
-            createdAt: Date.now(),
-          }).then(() => remarkOpenDocs(book));
-        } else {
-          if (removed) undeleteVocab(lemma);
-          else deleteVocab(lemma);
-          removed = !removed;
-        }
+        if (removed) undeleteVocab(lemma);
+        else deleteVocab(lemma);
+        removed = !removed;
         paint();
+        remarkOpenDocs(book); // 移出的词书里不标
       });
       btnIgnore.addEventListener('click', () => {
         if (isIgnored(lemma)) unignoreVocab(lemma);

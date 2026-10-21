@@ -1035,7 +1035,7 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets; gridInsets?:
         }
       }
       const text = range.toString().trim() || word;
-      markWordLensLookup(element, !!tapRange); // [odybo] 点透镜查的词不进生词本，点我们标的生词、单击查词照常算（src/odybo/selection.ts）
+      markWordLensLookup(element, !!tapRange); // [odybo] 记下这次是不是点透镜小字查的（src/odybo/selection.ts）
       pendingWordLensDictRef.current = true;
       setSelection({
         key: bookKey,

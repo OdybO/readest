@@ -2,6 +2,7 @@ import { DOUBLE_CLICK_INTERVAL_THRESHOLD_MS, LONG_HOLD_THRESHOLD } from '@/servi
 import { eventDispatcher } from '@/utils/event';
 import { findGlossWord } from '@/app/reader/utils/wordlensRuby';
 import { odyboTapWord } from '@/odybo/tapLookup'; // [odybo]
+import { odyboTwoFingerTap } from '@/odybo/twoFinger'; // [odybo]
 import { TURN_GESTURE_LEFT_INSET_ATTRIBUTE } from './brightnessGesture';
 import { hasScrollRoomY } from './wheelGesture';
 import { toParentViewportPoint } from './annotatorUtil';
@@ -679,6 +680,7 @@ export const handleClick = (
 };
 
 const handleTouchEv = (bookKey: string, event: TouchEvent, type: string) => {
+  odyboTwoFingerTap(bookKey, event, type); // [odybo] 开着单击查词时，两指轻点呼出菜单（src/odybo/twoFinger.ts）
   // Use event.touches (all active touches) instead of event.targetTouches
   // so that multi-finger gestures work even when fingers land on different
   // elements within the iframe (e.g. canvas vs textLayer spans in PDF)

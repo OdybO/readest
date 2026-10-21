@@ -9,8 +9,8 @@
 | `src/app/reader/components/annotator/DictionaryResultsView.tsx` | 我们的卡片查询中也显示（边出边显示）、不折叠成 4 行：`isOdyboStreamingProvider(p.id)` |
 | `apps/readest-app/.env.local`（不进 git，云编译时生成） | `NEXT_PUBLIC_SELF_HOSTED=true`，付费功能的开关全部打开 |
 | `src-tauri/gen/android/app/build.gradle.kts` | `applicationId = "com.odybo.readest"`，和官方版能同时装 |
-| `src/app/reader/components/annotator/Annotator.tsx` | 单词透镜点小字查词那条路（`handleWordLensDictionary`）：①调用 `markWordLensLookup(element, 是不是单击查词)`：点透镜小字记成 `lens`、不进生词本；点我们标的生词、单击查词照常算；②除了 `element` 也收 `range`（单击查词直接给选区） |
-| `src/app/reader/utils/iframeEventHandlers.ts` | 单击处理里，透镜判断后面调用 `odyboTapWord(event)`：开着「单击查词」、点在英文单词上，就发 `wordlens-dictionary`（带 `range`）去查；点空白处、链接、脚注照旧 |
+| `src/app/reader/components/annotator/Annotator.tsx` | 单词透镜点小字查词那条路（`handleWordLensDictionary`）：①调用 `markWordLensLookup(element, 是不是单击查词)`：点透镜小字查的记成 `lens`（只记来源，10-21 起也进生词本）；②除了 `element` 也收 `range`（单击查词直接给选区） |
+| `src/app/reader/utils/iframeEventHandlers.ts` | ①单击处理里，透镜判断后面调用 `odyboTapWord(event)`：开着「单击查词」、点在英文单词上，就发 `wordlens-dictionary`（带 `range`）去查；点空白处、链接、脚注照旧；②`handleTouchEv` 开头调用 `odyboTwoFingerTap`：开着「单击查词」时两指轻点呼出 / 收起工具栏 |
 | `src/app/reader/components/FoliateViewer.tsx` | 章节一载入、透镜每次刷新完，调用 `markVocabInDoc(doc, 书名)` 在书里标出预读过的生词 |
 | `src/app/reader/components/footerbar/NavigationBar.tsx`、`DesktopFooterBar.tsx` | 底部工具栏各加一个 `<OdyboToolbarButton>`（手机 / 平板一套，电脑一套） |
 | `src/components/settings/SettingsDialog.tsx` | 设置窗口加一个「语境查词」标签（类型里加 `'Odybo'`、标签列表加一项、渲染 `OdyboSettingsPanel`、重置表加一项） |
@@ -21,18 +21,19 @@
 
 - `context-paragraph.js`：整段上下文算法。PDF 按文字层的位置重建行、栏、段落；EPUB 取所在块加前后块；总长不超过 2000 字。回归测试在 `D:\Tools\CtxLookup\整段上下文\unit.mjs`。
 - `selection.ts`：选中文字时记下整段上下文，查词时按选中的文字取回。
-- `prompt.ts`：提示词，从电脑小工具 `D:\Tools\CtxLookup\ctx_lookup.py` 的 `SYSTEM` 原样抽出来。另有我们写的 `buildChunkPrompt` / `isChunkOf`：选中的是长句里的一截（超过六个词、整句比它长）时，照小工具把「所在句子」一起发过去，要求只翻译这一截、按整句理解，并加了一句「这一截可能不是完整的句子，缺的主语、谓语在整句哪里要按整句理解」，防止当独立句子讲错；预读长句的一截也用它。
+- `prompt.ts`：提示词，从电脑小工具 `D:\Tools\CtxLookup\ctx_lookup.py` 的 `SYSTEM` 原样抽出来。另有我们写的 `CHUNK_RULE` / `buildChunkPrompt` / `isChunkOf`：选中的是长句里的一截（超过六个词、整句比它长）时，把「所在句子」一起发过去，附上 `CHUNK_RULE`（开发者 10-21 定的「问法 E」）：整句只用来帮 AI 理解，翻译和拆解只管选中的词；开头或结尾切断了词组时，在翻译下面另起一行写「补充：……」。小工具原来的写法（「请结合整句理解，只翻译这一截」）真 AI 实测会把没选中的部分也翻进去，所以改了。预读长句的一截也用它。卡片上「补充」那行小一号、浅色（`render.ts`）。
 - `provider.ts`：顶替「语境词典」，用我们的提示词，答案边出边显示，同一个词同一段上下文查过就直接显示。
 - `history.ts`：查过的答案存进本机 IndexedDB（库名 `odybo-ctx-lookup`），关掉 App 也在。同一本书 + 同一个选中的内容 + 同一句算查过，直接显示并标「本机记录」。
 - `prefetch.ts`：句子预读，照小工具的 rolling_prefetch：卡片底部勾「本书自动预读」（每本书单独记，默认关）后，每次查完就从选中处往后预读 3 截（20 词以内整句一截，长句切成 8～20 词的几截，长句整句另外一份），同时最多 3 个请求，存进本机。选中的正好是预读过的一截或一句、或是某一截的一半以上，直接显示并标「预读」。不预读单个的词。
 - `settings.ts` / `SettingsPanel.tsx`：我们自己的设置页（设置窗口最后一个标签「语境查词」），存在本机 localStorage：预读截数（默认 3）、短句长度（默认 20 个词）、所有书自动预读（默认关）、恢复默认；说明收在名字右边的 ⓘ 里点开看。预读同时查询数固定 3、不放进设置页。以后生词本的设置也放这里。
 - `vocab.ts` / `VocabPage.tsx`：生词本（设置 → 语境查词 → 生词本 >），照小工具 vocab_list，从「自己查过的」记录算出来：只收 6 个词以内的单词和短语（整句不收），按【原形】跨书合并；分「一周内 / 一个月内 / 更早」三栏（按最近一次查询）；每行原形、次数、最近一次的意思、最近查询时间（月-日 时:分），点开看各种写法和每一次的书、时间、原句（查的词粉色加粗）；删除要点两次，删掉后再查一次会回来（再查同一处会刷新查询时间）。
 - 生词预读（在 `prefetch.ts`）：句子预读时，预读的那几截里出现了生词本前 N 个（默认 20）、最近 D 天（默认 30）查过的词，就另外预读「这个词在这一句里」，每次最多 M 个（默认 5，0 = 不预读生词），每个词单独一次请求、格式和自己点查一样；句子的请求里也提醒 AI 一定解释这些生词（照小工具 vocab_hint）。点到这个词时直接显示，标「预读（生词）」。预读的答案被用上时也记进「自己查过的」。
-- 查词卡片底下（单词和短语）：「移出生词本」（再查会回来）、「忽略」（再查也不进生词本，生词本「已忽略」栏可恢复）；点透镜小字查的、生词本里还没有这个词时，第一个按钮换成「加入生词本」；最右边「生词本」直接打开生词本（`vocabLink.ts` 的 `openVocabBook`；`provider.ts` 会被打进服务端代码，不能直接引用 `SettingsPanel.tsx` 这类界面代码，否则安卓正式打包报错，网页开发版查不出来）。
-- `marks.ts`：在书里标出生词：预读过的（同一本书、同一个词、同一句）和自己查过的单词、短语（点透镜查的不算；忽略了的词不标），照透镜的做法包成 `<ruby class="wl-gloss odybo-vocab">`，字上面显示这一句里的解释（最多 8 个字）或一个粉色的点；同一个词透镜也标了就换成我们的。点一下走透镜那条路直接查。只用于 EPUB 这类能重排的书。查词时取上下文会去掉这些标注小字。
-- `ToolbarButton.tsx`：底部工具栏的「语境查词」按钮，点开五个开关：显示透镜、生词预读（关掉 = 不预读生词、书里也不标）、生词标法（解释 / 点）、单击查词（默认关）、本书自动预读。
+- 查词卡片底下（单词和短语）：「移出生词本」（再查会回来）、「忽略」（再查也不进生词本，生词本「已忽略」栏可恢复）；点透镜小字查的也直接进生词本（开发者 10-21：划词、点透镜都说明不认识），没有「加入生词本」按钮；最右边「生词本」直接打开生词本（`vocabLink.ts` 的 `openVocabBook`；`provider.ts` 会被打进服务端代码，不能直接引用 `SettingsPanel.tsx` 这类界面代码，否则安卓正式打包报错，网页开发版查不出来）。
+- `marks.ts`：在书里标出生词：预读过的（同一本书、同一个词、同一句）和自己查过的单词、短语（点透镜查的也算；忽略了的、移出生词本的不标），照透镜的做法包成 `<ruby class="wl-gloss odybo-vocab">`，字上面显示这一句里的解释（【这里的意思】第一个分句，10 个字以内整个留，更长在 10 字内最后一个「、」处截）或一个粉色的点；同一个词透镜也标了就换成我们的。点一下走透镜那条路直接查。只用于 EPUB 这类能重排的书。查词时取上下文会去掉这些标注小字。
+- `ToolbarButton.tsx`：底部工具栏的「语境查词」按钮，点开五个开关：显示透镜、生词预读（关掉 = 不预读生词、书里也不标）、生词标法（解释 / 点）、单击查词（默认关；开着时两指轻点呼出菜单）、本书自动预读。
 - `tapLookup.ts`：单击查词。开着时，轻点正文里的一个英文单词（按手指位置找到字，再向两边扩到整个词，并确认真的点在这个词上）就查它，算自己查的；点空白处、页边照旧翻页、呼出菜单；只查单个词，短语和句子还是长按拖选；PDF 这类固定排版的书不做。
 - `vocabLink.ts`：卡片上「生词本」按钮打开设置窗口、直接到生词本页。
+- `twoFinger.ts`：开着「单击查词」时，两指轻点（两个手指放下、几乎不动、400 毫秒内抬起）呼出 / 收起工具栏，代替点屏幕中间；捏合缩放手指会动，不算。网页版只能用代码模拟触摸来测，真手感要在平板上试。
 
 跳到别的章节后怎么回来：这是 Readest 自带的。点书里的链接跳走后，底部工具栏的进度面板（手机 / 平板点「Reading Progress」，电脑底栏直接有）里有「Go Back」箭头，回到跳之前的位置；脚注是弹窗显示，不跳走。
 - `render.ts`：排版，照小工具：栏目名粉色、【这里的意思】大字、【整句翻译】浅蓝、词组等英文黄色；内容是「无」的栏目和【原形】不显示；最后附原句，选中的粉色加粗、词组短语加下划线。
@@ -74,6 +75,13 @@
    - Readest 自带的单词透镜在网页版用不了（它的词表从 cdn.readest.com 下载，只允许 readest.com 的网页取）。测「点透镜小字」可以在控制台手工把一个词包成 `<ruby class="wl-gloss">词<rt>提示</rt></ruby>` 再点它。
    - 网页开发版不检查「服务端打包」的限制，安卓正式打包会：`provider.ts` 这类会被打进服务端的代码不能直接引用 React 界面代码（`.tsx` 组件、状态库），要用的话用 `import()` 用到时再加载（例：`vocabLink.ts`）。
    - 在控制台里：`window.__odyboDocs` 是打开着的章节文档 → 书名，可以用它查书里的标注（`ruby.odybo-vocab`）。本机记录在 IndexedDB `odybo-ctx-lookup`（`history` 自己查的、`prefetch` 预读的），设置在 localStorage `odybo.*`。
+
+### 用真 AI 测（改了发给 AI 的内容必须做）
+
+探针只回固定的假答案，只能确认「发出去的内容对不对」，看不出 AI 回答得好不好。改了提示词、提问的拼法（`prompt.ts`、`prefetch.ts` 里的 `userPrompt`），或者改了从回答里取东西的地方（`marks.ts` 的标注字、`vocab.ts` 的【原形】），**交给开发者测之前，自己先用 N1 真 AI 跑一遍**（开发者 10-21：「你自己都不知道有没有问题，让我测试」）。
+
+- `D:\Tools\CtxLookup\测试脚本\real_ai_check.py`：照 Readest 代码里的写法拼请求发给 N1（密钥从 `config.json` 读，不打印）。分组：`cut` 选中长句的一截（含切断了词组的情况）、`hint` 预读整句带生词提醒、`label` 书里标注的字。改了 Readest 里的写法，这个脚本要跟着改。
+- `chunk_test.py`（长句一截几种问法对比）、`lemma_test.py`（【原形】对不对）、`readest_prompt_test.py`（各种选法）也是真 AI。
 
 ### 编译安卓版
 

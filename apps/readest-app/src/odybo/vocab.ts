@@ -97,6 +97,8 @@ export const undeleteVocab = (lemma: string) => {
   }
 };
 export const isIgnored = (lemma: string) => lemma in getIgnored();
+/** 这条记录（时间 t）是不是在移出生词本之前的（移出之后再查的不算） */
+export const isDeletedBefore = (lemma: string, t: number) => t <= (getDeleted()[lemma] ?? 0);
 export const ignoreVocab = (lemma: string) => saveIgnored({ ...getIgnored(), [lemma]: Date.now() });
 export const unignoreVocab = (lemma: string) => {
   const d = getIgnored();
@@ -111,7 +113,7 @@ export const loadVocab = async (): Promise<VocabEntry[]> => {
   const groups = new Map<string, VocabEntry & { lastAnswer: string }>();
   recs.sort((a, b) => a.createdAt - b.createdAt);
   for (const r of recs) {
-    if (!isVocab(r.word) || r.source === 'lens') continue; // 点单词透镜查的不进生词本
+    if (!isVocab(r.word)) continue; // 点单词透镜查的也算（10-21 开发者定：点了就是不认识）
     const lemma = lemmaOf(r);
     if (!lemma || lemma in ignored || r.createdAt <= (deleted[lemma] ?? 0)) continue;
     let g = groups.get(lemma);

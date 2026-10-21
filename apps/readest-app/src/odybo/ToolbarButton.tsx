@@ -87,7 +87,7 @@ const Panel: React.FC<{ bookKey: string; onClose: () => void }> = ({ bookKey, on
             ))}
           </div>
         </Row>
-        <Row label='单击查词' tip='轻点英文单词直接查；点空白处、页边照旧翻页'>
+        <Row label='单击查词' tip='轻点英文单词直接查；两指轻点呼出菜单；点空白处、页边照旧'>
           <Toggle checked={s.tapLookup} onChange={() => update({ tapLookup: !s.tapLookup })} />
         </Row>
         <Row
