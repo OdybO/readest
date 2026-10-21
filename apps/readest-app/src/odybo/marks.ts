@@ -98,9 +98,33 @@ const styleRt = (rt: HTMLElement, gloss: boolean) => {
 };
 
 /** 标出这一章里预读过的生词。 */
+// 查词卡片开着、或者正选着文字时不动书里的标注：包词会改动选中的那段文字，Readest 当成选区没了，就把卡片关了
+// （开发者 10-21 遇到「卡片自己关掉」，网页上重现：查完新词、给它包标注的那一刻卡片关闭）。等卡片关了再标。
+const busy = () =>
+  !!document.querySelector('[data-dict-content]') ||
+  [...docs.keys()].some((d) => {
+    const sel = d.defaultView ? d.getSelection() : null;
+    return !!sel && !sel.isCollapsed;
+  });
+const waiting = new Map<Document, string>();
+let waitTimer: ReturnType<typeof setInterval> | null = null;
+const markLater = (doc: Document, book: string) => {
+  waiting.set(doc, book);
+  if (waitTimer) return;
+  waitTimer = setInterval(() => {
+    if (busy()) return;
+    if (waitTimer) clearInterval(waitTimer);
+    waitTimer = null;
+    const list = [...waiting];
+    waiting.clear();
+    for (const [d, b] of list) if (d.defaultView) void markVocabInDoc(d, b);
+  }, 800);
+};
+
 export const markVocabInDoc = async (doc: Document, book: string) => {
   docs.set(doc, book);
   void import('./dataSync').then((m) => m.syncSoon()); // 打开书时顺便和 WebDAV 同步（最多 10 分钟一次）
+  if (busy()) return markLater(doc, book);
   try {
     clearOurs(doc);
     const st = getSettings();
@@ -115,6 +139,7 @@ export const markVocabInDoc = async (doc: Document, book: string) => {
       return !isIgnored(lemma) && !isDeletedBefore(lemma, r.at);
     });
     if (!recs.length || !doc.defaultView) return;
+    if (busy()) return markLater(doc, book); // 读记录的这段时间里打开了查词卡片
     clearOurs(doc); // 等记录的这段时间里可能又标过一次
     const model = textModel(doc);
     const lower = model.text.toLowerCase();
