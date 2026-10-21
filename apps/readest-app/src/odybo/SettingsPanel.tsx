@@ -8,6 +8,8 @@ import { BoxedList } from '@/components/settings/primitives';
 import { Toggle } from '@/components/primitives/toggle';
 import { DEFAULT_SETTINGS, getSettings, saveSettings, type OdyboSettings } from './settings';
 import { takeOpenVocab } from './vocabLink';
+import { getPrompts, refreshPrompts } from './remotePrompts';
+import { formatTime } from './vocab';
 
 /** 一行设置：名字 + ⓘ（点开说明）+ 右边的控件；说明显示在这一行下面。 */
 const Row: React.FC<{ label: string; tip: string; children: React.ReactNode }> = ({
@@ -71,6 +73,44 @@ const Stepper: React.FC<{
   </div>
 );
 
+/** 提示词从哪来（remotePrompts.ts）：WebDAV 上的那份，还是 App 自带的；可以马上重新读一遍 */
+const PromptBox: React.FC = () => {
+  const [p, setP] = useState(() => getPrompts());
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+  const when = p.fetchedAt ? formatTime(p.fetchedAt) : '';
+  return (
+    <BoxedList title='提示词'>
+      <div className='flex min-h-14 items-center justify-between gap-4 pe-4'>
+        <div className='flex flex-col'>
+          <span className='settings-content'>
+            {p.source === 'webdav' ? `用 WebDAV 上的（${when} 读到）` : '用 App 自带的'}
+          </span>
+          <span className='text-base-content/60 text-xs'>
+            放在 WebDAV 根目录下
+            odybo/prompts/：system.txt、chunk.txt、vocab_hint.txt；改了不用重新编译，最多 10
+            分钟自动读一次
+          </span>
+          {msg && <span className='text-base-content/70 text-xs'>{msg}</span>}
+        </div>
+        <button
+          type='button'
+          className='btn btn-sm btn-outline shrink-0'
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setMsg(await refreshPrompts(true));
+            setP(getPrompts());
+            setBusy(false);
+          }}
+        >
+          {busy ? '读取中…' : '重新读取'}
+        </button>
+      </div>
+    </BoxedList>
+  );
+};
+
 const OdyboSettingsPanel: React.FC = () => {
   const [s, setS] = useState<OdyboSettings>(() => getSettings());
   const [page, setPage] = useState<'main' | 'vocab'>(() => (takeOpenVocab() ? 'vocab' : 'main'));
@@ -94,6 +134,8 @@ const OdyboSettingsPanel: React.FC = () => {
           <MdChevronRight className='text-base-content/50 h-5 w-5' />
         </button>
       </BoxedList>
+
+      <PromptBox />
 
       <BoxedList title='句子预读'>
         <Row label='预读截数' tip='提前查询后面 N 截。短句一整句为一截，长句按逗号分成几截。'>

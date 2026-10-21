@@ -15,16 +15,24 @@ export const CHUNK_RULE =
   '只看选中部分会误解：【翻译】仍然只译选中的部分，在它下面另起一行写「补充：……」，说出缺的是哪个词、连起来是什么意思；' +
   '没有切断就不要写补充）';
 
-/** 选中的是长句里的一截（自己选中的、预读切出来的都用）：把整句一起发过去，附上 CHUNK_RULE。 */
+/** 预读时的生词提醒（照小工具 vocab_hint），{words} 换成这里出现的生词，用「、」隔开 */
+export const VOCAB_HINT =
+  '（读者以前查过、还没记住这些词，这里出现了，请在【词组短语】或【难点】里一定解释：{words}）';
+
+// 上面三段（ODYBO_SYSTEM_PROMPT、CHUNK_RULE、VOCAB_HINT）是 App 自带的一份；
+// WebDAV 上 odybo/prompts/ 里有文件就用那边的（remotePrompts.ts），改提示词不用重新编译。
+
+/** 选中的是长句里的一截（自己选中的、预读切出来的都用）：把整句一起发过去，附上长句一截的要求。 */
 export const buildChunkPrompt = (
   bookTitle: string,
   text: string,
   sentence: string,
   para: string,
   hint = '',
+  rule = CHUNK_RULE,
 ) =>
   `书名或文章：${bookTitle || '（未知）'}\n\n选中的内容：${text}\n\n所在句子：${sentence}\n\n所在段落：${para}\n\n` +
-  CHUNK_RULE +
+  rule +
   hint;
 
 /** 选中的内容是不是长句里的一截：超过六个词（按长句格式回答）、整句比它长、整句里找得到它 */

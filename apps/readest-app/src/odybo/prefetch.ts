@@ -8,7 +8,8 @@ import {
   loadSDK,
   stripReasoning,
 } from '@/services/translators/custom/openaiCompatible';
-import { ODYBO_SYSTEM_PROMPT, buildChunkPrompt } from './prompt';
+import { buildChunkPrompt } from './prompt';
+import { getPrompts } from './remotePrompts';
 import { PREFETCH_PARALLEL, getSettings } from './settings';
 import { vocabForPrefetch, type VocabEntry } from './vocab';
 import { remarkOpenDocs } from './marks';
@@ -127,14 +128,13 @@ export const readingUnits = (para: string): Unit[] =>
 
 // ---------- 发给 AI（和自己选中这段文字查一样，同一个提示词） ----------
 
+// 提示词用 WebDAV 上的那份（有的话，remotePrompts.ts）
 const vocabHint = (u: Unit) =>
-  u.hint?.length
-    ? `\n\n（读者以前查过、还没记住这些词，这里出现了，请在【词组短语】或【难点】里一定解释：${u.hint.join('、')}）`
-    : '';
+  u.hint?.length ? `\n\n${getPrompts().vocabHint.replace('{words}', u.hint.join('、'))}` : '';
 
 const userPrompt = (book: string, u: Unit) =>
   u.kind === 'chunk'
-    ? buildChunkPrompt(book, u.text, u.sentence, u.para, vocabHint(u))
+    ? buildChunkPrompt(book, u.text, u.sentence, u.para, vocabHint(u), getPrompts().chunk)
     : `书名或文章：${book}\n\n选中的内容：${u.text}\n\n所在段落：${u.para}${u.kind === 'sent' ? vocabHint(u) : ''}`;
 
 /** 存进本机的键：句子和截按内容；生词按「这个词 + 所在句」（同一个词在别的句子里是另一份） */
@@ -169,7 +169,7 @@ const prefetchUnit = async (
       const [{ generateText }] = await loadSDK();
       const { text } = await generateText({
         model: await createChatModel(translator),
-        system: ODYBO_SYSTEM_PROMPT,
+        system: getPrompts().system,
         prompt: userPrompt(book, u),
         temperature: translator.temperature ?? 0.2,
         maxRetries: 1,

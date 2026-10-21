@@ -9,7 +9,8 @@ import {
 } from '@/services/translators/custom/openaiCompatible';
 import type { DictionaryProvider } from '@/services/dictionaries/types';
 import { BUILTIN_PROVIDER_IDS } from '@/services/dictionaries/types';
-import { ODYBO_SYSTEM_PROMPT, buildChunkPrompt, buildUserPrompt, isChunkOf } from './prompt';
+import { buildChunkPrompt, buildUserPrompt, isChunkOf } from './prompt';
+import { getPrompts, refreshPrompts } from './remotePrompts';
 import { contextFor } from './selection';
 import { pickSentence, renderAnswer } from './render';
 import { findHistory, fingerprint, historyKey, saveHistory } from './history';
@@ -36,7 +37,6 @@ import {
 const REQUEST_TIMEOUT_MS = 60_000;
 const MAX_CACHE = 200;
 const cache = new Map<string, string>(); // 内存里的一份，省得每次读本机记录
-const PROMPT_VERSION = fingerprint(ODYBO_SYSTEM_PROMPT);
 
 /** 弹窗在查询中会把内容藏起来、没展开时只显示 4 行；我们的查词要边出边显示、整个显示。
  * 接入点：app/reader/components/annotator/DictionaryResultsView.tsx 用这个判断。 */
@@ -53,6 +53,10 @@ export const odyboContextProvider: DictionaryProvider = {
         '还没有设置 AI：在设置里添加一个 OpenAI 兼容的自定义翻译器（N1 的地址、密钥、模型）。';
       return { ok: true, headword: word, sourceLabel: '语境查词' };
     }
+    // 提示词：WebDAV 上有就用那边的（remotePrompts.ts）；这次用手上的那份，顺便在后台看看有没有更新
+    void refreshPrompts();
+    const prompts = getPrompts();
+    const PROMPT_VERSION = fingerprint(prompts.system);
     const sel = ctx.selection;
     // 整段上下文对不上时（比如在词典里点了另一个词），退回 Readest 自己算的前后文
     const mine = contextFor(word);
@@ -68,7 +72,7 @@ export const odyboContextProvider: DictionaryProvider = {
     // 选中的是长句里的一截：照小工具，把整句一起发过去，只翻译这一截
     const prompt =
       sel && sentence && isChunkOf(word, sentence)
-        ? buildChunkPrompt(sel.bookTitle ?? '', word, sentence, context)
+        ? buildChunkPrompt(sel.bookTitle ?? '', word, sentence, context, '', prompts.chunk)
         : buildUserPrompt(sel?.bookTitle ?? '', word, sel ? context : '');
     const render = (container: HTMLElement, answer: string, done: boolean, note = '') =>
       renderAnswer(container, answer, { word, sentence, done, dark: ctx.isDarkMode, note });
@@ -239,7 +243,7 @@ export const odyboContextProvider: DictionaryProvider = {
       const [{ streamText }] = await loadSDK();
       const result = streamText({
         model: await createChatModel(translator),
-        system: ODYBO_SYSTEM_PROMPT,
+        system: prompts.system,
         prompt,
         temperature: translator.temperature ?? 0.2,
         maxRetries: 1,
