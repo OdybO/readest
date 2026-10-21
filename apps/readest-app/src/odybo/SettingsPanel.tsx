@@ -10,6 +10,7 @@ import { DEFAULT_SETTINGS, getSettings, saveSettings, type OdyboSettings } from 
 import { takeOpenVocab } from './vocabLink';
 import { getPrompts, refreshPrompts } from './remotePrompts';
 import { formatTime } from './vocab';
+import { deviceId, lastSync, syncNow } from './dataSync';
 
 /** 一行设置：名字 + ⓘ（点开说明）+ 右边的控件；说明显示在这一行下面。 */
 const Row: React.FC<{ label: string; tip: string; children: React.ReactNode }> = ({
@@ -72,6 +73,35 @@ const Stepper: React.FC<{
     </button>
   </div>
 );
+
+/** 上次同步的结果，和「立即同步」按钮（dataSync.ts） */
+const SyncStatusRow: React.FC = () => {
+  const [st, setSt] = useState(() => lastSync());
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className='flex min-h-14 items-center justify-between gap-4 pe-4'>
+      <div className='flex flex-col'>
+        <span className='settings-content'>
+          {st.at ? `上次同步 ${formatTime(st.at)}` : '还没同步过'}
+        </span>
+        <span className='text-base-content/60 text-xs'>{st.message}</span>
+        <span className='text-base-content/60 text-xs'>这台设备：{deviceId()}</span>
+      </div>
+      <button
+        type='button'
+        className='btn btn-sm btn-outline shrink-0'
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          setSt(await syncNow());
+          setBusy(false);
+        }}
+      >
+        {busy ? '同步中…' : '立即同步'}
+      </button>
+    </div>
+  );
+};
 
 /** 提示词从哪来（remotePrompts.ts）：WebDAV 上的那份，还是 App 自带的；可以马上重新读一遍 */
 const PromptBox: React.FC = () => {
@@ -136,6 +166,23 @@ const OdyboSettingsPanel: React.FC = () => {
       </BoxedList>
 
       <PromptBox />
+
+      <BoxedList title='同步到 WebDAV'>
+        <Row
+          label='同步查词记录和生词本'
+          tip='用 Readest 里设置的 WebDAV，放在根目录下 odybo/data/。每台设备只写自己的文件夹、读别人的，合并时同一条以时间新的为准。打开书、查词时最多 10 分钟同步一次，本机改了 1 分钟后上传。重装或换设备后打开就能拿回来。'
+        >
+          <Toggle checked={s.syncData} onChange={() => update({ syncData: !s.syncData })} />
+        </Row>
+        <Row label='也同步预读结果' tip='预读结果比查词记录多得多，太大时可以关掉。'>
+          <Toggle
+            checked={s.syncPrefetch}
+            disabled={!s.syncData}
+            onChange={() => update({ syncPrefetch: !s.syncPrefetch })}
+          />
+        </Row>
+        <SyncStatusRow />
+      </BoxedList>
 
       <BoxedList title='句子预读'>
         <Row label='预读截数' tip='提前查询后面 N 截。短句一整句为一截，长句按逗号分成几截。'>

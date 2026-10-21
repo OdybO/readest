@@ -100,6 +100,7 @@ const styleRt = (rt: HTMLElement, gloss: boolean) => {
 /** 标出这一章里预读过的生词。 */
 export const markVocabInDoc = async (doc: Document, book: string) => {
   docs.set(doc, book);
+  void import('./dataSync').then((m) => m.syncSoon()); // 打开书时顺便和 WebDAV 同步（最多 10 分钟一次）
   try {
     clearOurs(doc);
     const st = getSettings();

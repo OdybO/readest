@@ -11,6 +11,7 @@ import type { DictionaryProvider } from '@/services/dictionaries/types';
 import { BUILTIN_PROVIDER_IDS } from '@/services/dictionaries/types';
 import { buildChunkPrompt, buildUserPrompt, isChunkOf } from './prompt';
 import { getPrompts, refreshPrompts } from './remotePrompts';
+import { syncSoon } from './dataSync';
 import { contextFor } from './selection';
 import { pickSentence, renderAnswer } from './render';
 import { findHistory, fingerprint, historyKey, saveHistory } from './history';
@@ -55,6 +56,7 @@ export const odyboContextProvider: DictionaryProvider = {
     }
     // 提示词：WebDAV 上有就用那边的（remotePrompts.ts）；这次用手上的那份，顺便在后台看看有没有更新
     void refreshPrompts();
+    syncSoon(); // 我们的数据和 WebDAV 同步（最多 10 分钟一次，dataSync.ts）
     const prompts = getPrompts();
     const PROMPT_VERSION = fingerprint(prompts.system);
     const sel = ctx.selection;

@@ -3,6 +3,8 @@
 //   同一个词在别的句子里会重新查：意思和整句翻译要按那一句来。
 // prefetch：预读的一截或一句（照小工具的 prefetch_sent 表）。按「书 + 这一截的本质内容」存。
 
+import { notifyChange } from './changes';
+
 const DB_NAME = 'odybo-ctx-lookup';
 const VERSION = 2;
 export const HISTORY = 'history';
@@ -105,9 +107,16 @@ export const getRecord = async <T>(store: string, key: string): Promise<T | unde
   }
 };
 
-export const putRecord = async (store: string, rec: { key: string }) => {
+/** silent：从 WebDAV 拉下来写进本机时用，不通知同步再传上去 */
+export const putRecord = async (
+  store: string,
+  rec: { key: string; createdAt?: number },
+  silent = false,
+) => {
   try {
     await run(store, 'readwrite', (s) => s.put(rec));
+    if (!silent)
+      notifyChange({ kind: store === HISTORY ? 'history' : 'prefetch', at: rec.createdAt });
   } catch (e) {
     console.warn('[odybo] 存本机记录失败', e);
   }

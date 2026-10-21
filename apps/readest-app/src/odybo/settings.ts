@@ -1,5 +1,6 @@
 // 我们自己的设置（存在本机 localStorage，不进 Readest 的设置、不同步）。
 // 设置页界面在 SettingsPanel.tsx，挂在 Readest 设置窗口的「语境查词」标签下。
+import { notifyChange } from './changes';
 
 export interface OdyboSettings {
   /** 预读截数：从选中处往后预读几截（小工具的 prefetch_ahead_sents） */
@@ -20,6 +21,10 @@ export interface OdyboSettings {
   vocabMarkStyle: 'gloss' | 'dot';
   /** 单击查词：轻点正文里的英文单词就查它（点空白处照旧翻页、呼出菜单） */
   tapLookup: boolean;
+  /** 同步到 WebDAV：查词记录、生词的移出和忽略、这些设置（dataSync.ts） */
+  syncData: boolean;
+  /** 同步时也带上预读结果（量大，可以关） */
+  syncPrefetch: boolean;
 }
 
 export const DEFAULT_SETTINGS: OdyboSettings = {
@@ -32,6 +37,8 @@ export const DEFAULT_SETTINGS: OdyboSettings = {
   vocabPrefetch: true,
   vocabMarkStyle: 'gloss',
   tapLookup: false,
+  syncData: true,
+  syncPrefetch: true,
 };
 
 /** 预读一次同时最多问几截（固定，不放进设置页；开发者 10-20 定） */
@@ -56,16 +63,40 @@ export const getSettings = (): OdyboSettings => {
       vocabPrefetch: saved.vocabPrefetch !== false,
       vocabMarkStyle: saved.vocabMarkStyle === 'dot' ? 'dot' : 'gloss',
       tapLookup: saved.tapLookup === true,
+      syncData: saved.syncData !== false,
+      syncPrefetch: saved.syncPrefetch !== false,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
 };
 
-export const saveSettings = (s: OdyboSettings) => {
+const AT_KEY = 'odybo.settingsAt'; // 上次改设置的时间，多台设备同步时按时间新的为准
+
+/** silentAt：从 WebDAV 拉下来的设置，记下它原来的时间、不再通知上传 */
+export const saveSettings = (s: OdyboSettings, silentAt?: number) => {
   try {
     localStorage.setItem(KEY, JSON.stringify(s));
+    localStorage.setItem(AT_KEY, String(silentAt ?? Date.now()));
   } catch {
     // 存不了就只在这次打开时有效
   }
+  if (silentAt === undefined) notifyChange({ kind: 'state' });
+};
+
+/** 同步用：设置和改的时间 */
+export const exportSettings = () => {
+  let at = 0;
+  try {
+    at = Number(localStorage.getItem(AT_KEY)) || 0;
+  } catch {
+    // 读不了当作没改过
+  }
+  return { value: getSettings(), at };
+};
+/** 同步用：别的设备的设置比本机新才用。返回用了没有。 */
+export const importSettings = (remote?: { value?: Partial<OdyboSettings>; at?: number }) => {
+  if (!remote?.value || !remote.at || remote.at <= exportSettings().at) return false;
+  saveSettings({ ...getSettings(), ...remote.value }, remote.at);
+  return true;
 };

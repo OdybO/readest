@@ -5,6 +5,7 @@
 // 删除（移出生词本）：记下删除时间，这个词那之前的记录都不算；以后再查一次，它会重新出现（误删也不怕）。
 // 忽略：这个词以后再查也不进生词本，在生词本「已忽略」栏里可以恢复。
 import { HISTORY, listAll, normalizeForKey, type HistoryRecord } from './history';
+import { notifyChange } from './changes';
 
 export interface VocabLookup {
   word: string;
@@ -50,60 +51,86 @@ const meaningOf = (answer: string) => {
   return (m?.[1] ?? '').trim();
 };
 
-// ---------- 删除记录（存在本机 localStorage：原形 → 删除时间） ----------
+// ---------- 移出生词本、忽略（存在本机 localStorage） ----------
+// 移出：原形 → 移出时间，这个词那之前的记录都不算。忽略：原形 → 忽略时间，以后再查也不进生词本。
+// 放回、取消忽略时记下「取消的时间」（odybo.vocabCleared），多台设备同步时按时间新的为准（dataSync.ts）。
 
 const DELETED_KEY = 'odybo.vocabDeleted';
-const getDeleted = (): Record<string, number> => {
-  try {
-    return JSON.parse(localStorage.getItem(DELETED_KEY) || '{}');
-  } catch {
-    return {};
-  }
-};
-export const deleteVocab = (lemma: string) => {
-  const d = getDeleted();
-  d[lemma] = Date.now();
-  try {
-    localStorage.setItem(DELETED_KEY, JSON.stringify(d));
-  } catch {
-    // 存不了就只在这次打开时有效
-  }
-};
-
-// ---------- 忽略（存在本机 localStorage：原形 → 忽略时间）：忽略的词以后再查也不进生词本 ----------
-
 const IGNORED_KEY = 'odybo.vocabIgnored';
-export const getIgnored = (): Record<string, number> => {
+const CLEARED_KEY = 'odybo.vocabCleared';
+type FlagKind = 'deleted' | 'ignored';
+const FLAG_KEY: Record<FlagKind, string> = { deleted: DELETED_KEY, ignored: IGNORED_KEY };
+
+const readMap = (key: string): Record<string, number> => {
   try {
-    return JSON.parse(localStorage.getItem(IGNORED_KEY) || '{}');
+    return JSON.parse(localStorage.getItem(key) || '{}');
   } catch {
     return {};
   }
 };
-const saveIgnored = (d: Record<string, number>) => {
+const writeMap = (key: string, d: object) => {
   try {
-    localStorage.setItem(IGNORED_KEY, JSON.stringify(d));
+    localStorage.setItem(key, JSON.stringify(d));
   } catch {
     // 存不了就只在这次打开时有效
   }
 };
-export const undeleteVocab = (lemma: string) => {
-  const d = getDeleted();
-  delete d[lemma];
-  try {
-    localStorage.setItem(DELETED_KEY, JSON.stringify(d));
-  } catch {
-    // 存不了就只在这次打开时有效
+const readCleared = () =>
+  readMap(CLEARED_KEY) as unknown as Record<FlagKind, Record<string, number>> & object;
+
+/** 设上（on）或取消某个词的「移出 / 忽略」，t 是时间；silent = 从 WebDAV 拉下来的，不再通知上传 */
+const setFlag = (kind: FlagKind, lemma: string, on: boolean, t = Date.now(), silent = false) => {
+  const map = readMap(FLAG_KEY[kind]);
+  const cleared = readCleared();
+  const c = { ...(cleared[kind] ?? {}) };
+  if (on) {
+    map[lemma] = t;
+    delete c[lemma];
+  } else {
+    delete map[lemma];
+    c[lemma] = t;
   }
+  writeMap(FLAG_KEY[kind], map);
+  writeMap(CLEARED_KEY, { ...cleared, [kind]: c });
+  if (!silent) notifyChange({ kind: 'state' });
 };
+
+const getDeleted = () => readMap(DELETED_KEY);
+export const getIgnored = () => readMap(IGNORED_KEY);
+export const deleteVocab = (lemma: string) => setFlag('deleted', lemma, true);
+export const undeleteVocab = (lemma: string) => setFlag('deleted', lemma, false);
 export const isIgnored = (lemma: string) => lemma in getIgnored();
 /** 这条记录（时间 t）是不是在移出生词本之前的（移出之后再查的不算） */
 export const isDeletedBefore = (lemma: string, t: number) => t <= (getDeleted()[lemma] ?? 0);
-export const ignoreVocab = (lemma: string) => saveIgnored({ ...getIgnored(), [lemma]: Date.now() });
-export const unignoreVocab = (lemma: string) => {
-  const d = getIgnored();
-  delete d[lemma];
-  saveIgnored(d);
+export const ignoreVocab = (lemma: string) => setFlag('ignored', lemma, true);
+export const unignoreVocab = (lemma: string) => setFlag('ignored', lemma, false);
+
+/** 同步用：原形 → 时间，正数 = 设上（移出 / 忽略）的时间，负数 = 取消的时间 */
+export type FlagExport = Record<FlagKind, Record<string, number>>;
+export const exportFlags = (): FlagExport => {
+  const cleared = readCleared();
+  const out = { deleted: {}, ignored: {} } as FlagExport;
+  for (const kind of ['deleted', 'ignored'] as FlagKind[]) {
+    for (const [l, t] of Object.entries(readMap(FLAG_KEY[kind]))) out[kind][l] = t;
+    for (const [l, t] of Object.entries(cleared[kind] ?? {}))
+      if (!(l in out[kind]) || t > out[kind][l]!) out[kind][l] = -t;
+  }
+  return out;
+};
+/** 同步用：别的设备的移出 / 忽略，比本机新的才用。返回改了几个。 */
+export const importFlags = (remote: Partial<FlagExport>) => {
+  const mine = exportFlags();
+  let n = 0;
+  for (const kind of ['deleted', 'ignored'] as FlagKind[]) {
+    for (const [l, v] of Object.entries(remote[kind] ?? {})) {
+      const cur = mine[kind][l];
+      if (cur === undefined || Math.abs(v) > Math.abs(cur)) {
+        setFlag(kind, l, v > 0, Math.abs(v), true);
+        n++;
+      }
+    }
+  }
+  return n;
 };
 
 export const loadVocab = async (): Promise<VocabEntry[]> => {
