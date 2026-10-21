@@ -22,8 +22,9 @@ let last: Remembered | null = null;
 // 单词透镜点小字时，Readest 先替你选中那个词再查；接入点：Annotator.tsx 在那条路上调用 markWordLensLookup()
 // 点的是我们自己标的生词（marks.ts）就不算透镜：算自己查，进生词本
 let lensPending = false;
-export const markWordLensLookup = (element?: Element | null) => {
-  lensPending = !isOurMark(element ?? null);
+// 单击查词（tapLookup.ts）也走这条路，isTap = true：算自己查
+export const markWordLensLookup = (element?: Element | null, isTap = false) => {
+  lensPending = !isTap && !isOurMark(element ?? null);
 };
 
 const norm = (s: string) =>

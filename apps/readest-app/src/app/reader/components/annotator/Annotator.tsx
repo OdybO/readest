@@ -1005,25 +1005,37 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets; gridInsets?:
   // (excluding the <rt> hint) so the existing dictionary popup positions itself.
   useEffect(() => {
     const handleWordLensDictionary = (event: CustomEvent) => {
-      const { element, word } = event.detail as { element: Element | null; word: string };
-      if (event.detail?.bookKey !== bookKey || !element || !word) return;
+      // [odybo] 单击查词（src/odybo/tapLookup.ts）也走这里：不给 element，直接给选区 range
+      const {
+        element,
+        word,
+        range: tapRange,
+      } = event.detail as {
+        element: Element | null;
+        word: string;
+        range?: Range;
+      };
+      if (event.detail?.bookKey !== bookKey || (!element && !tapRange) || !word) return;
       // Read the view fresh: this handler is registered once (deps [bookKey]) and
       // the closed-over `view` may still be null from when the effect first ran.
       const view = getView(bookKey);
-      const doc = element.ownerDocument;
+      const doc = tapRange ? tapRange.startContainer.ownerDocument! : element!.ownerDocument;
       const content = view?.renderer?.getContents().find((c) => c.doc === doc);
       if (!content || content.index == null) return;
       const index = content.index;
-      const rt = element.querySelector('rt');
-      const range = doc.createRange();
-      try {
-        range.selectNodeContents(element);
-        if (rt) range.setEndBefore(rt);
-      } catch {
-        return;
+      let range = tapRange;
+      if (!range) {
+        const rt = element!.querySelector('rt');
+        range = doc.createRange();
+        try {
+          range.selectNodeContents(element!);
+          if (rt) range.setEndBefore(rt);
+        } catch {
+          return;
+        }
       }
       const text = range.toString().trim() || word;
-      markWordLensLookup(element); // [odybo] 点透镜查的词不进生词本，点我们标的生词照常算（src/odybo/selection.ts）
+      markWordLensLookup(element, !!tapRange); // [odybo] 点透镜查的词不进生词本，点我们标的生词、单击查词照常算（src/odybo/selection.ts）
       pendingWordLensDictRef.current = true;
       setSelection({
         key: bookKey,

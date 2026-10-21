@@ -1,6 +1,7 @@
 import { DOUBLE_CLICK_INTERVAL_THRESHOLD_MS, LONG_HOLD_THRESHOLD } from '@/services/constants';
 import { eventDispatcher } from '@/utils/event';
 import { findGlossWord } from '@/app/reader/utils/wordlensRuby';
+import { odyboTapWord } from '@/odybo/tapLookup'; // [odybo]
 import { TURN_GESTURE_LEFT_INSET_ATTRIBUTE } from './brightnessGesture';
 import { hasScrollRoomY } from './wheelGesture';
 import { toParentViewportPoint } from './annotatorUtil';
@@ -621,6 +622,18 @@ export const handleClick = (
     if (glossWord) {
       const ruby = element?.closest('ruby.wl-gloss') ?? null;
       eventDispatcher.dispatch('wordlens-dictionary', { bookKey, element: ruby, word: glossWord });
+      return;
+    }
+
+    // [odybo] 单击查词：开着时轻点正文里的英文单词就查它，点空白处照旧（src/odybo/tapLookup.ts）
+    const odyboTap = !isFixedLayout ? odyboTapWord(event) : null;
+    if (odyboTap) {
+      eventDispatcher.dispatch('wordlens-dictionary', {
+        bookKey,
+        element: null,
+        range: odyboTap.range,
+        word: odyboTap.word,
+      });
       return;
     }
 

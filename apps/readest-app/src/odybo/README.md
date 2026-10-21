@@ -9,7 +9,8 @@
 | `src/app/reader/components/annotator/DictionaryResultsView.tsx` | 我们的卡片查询中也显示（边出边显示）、不折叠成 4 行：`isOdyboStreamingProvider(p.id)` |
 | `apps/readest-app/.env.local`（不进 git，云编译时生成） | `NEXT_PUBLIC_SELF_HOSTED=true`，付费功能的开关全部打开 |
 | `src-tauri/gen/android/app/build.gradle.kts` | `applicationId = "com.odybo.readest"`，和官方版能同时装 |
-| `src/app/reader/components/annotator/Annotator.tsx` | 单词透镜点小字查词那条路上调用 `markWordLensLookup(element)`：点透镜小字记成 `lens`、不进生词本；点我们标的生词照常算 |
+| `src/app/reader/components/annotator/Annotator.tsx` | 单词透镜点小字查词那条路（`handleWordLensDictionary`）：①调用 `markWordLensLookup(element, 是不是单击查词)`：点透镜小字记成 `lens`、不进生词本；点我们标的生词、单击查词照常算；②除了 `element` 也收 `range`（单击查词直接给选区） |
+| `src/app/reader/utils/iframeEventHandlers.ts` | 单击处理里，透镜判断后面调用 `odyboTapWord(event)`：开着「单击查词」、点在英文单词上，就发 `wordlens-dictionary`（带 `range`）去查；点空白处、链接、脚注照旧 |
 | `src/app/reader/components/FoliateViewer.tsx` | 章节一载入、透镜每次刷新完，调用 `markVocabInDoc(doc, 书名)` 在书里标出预读过的生词 |
 | `src/app/reader/components/footerbar/NavigationBar.tsx`、`DesktopFooterBar.tsx` | 底部工具栏各加一个 `<OdyboToolbarButton>`（手机 / 平板一套，电脑一套） |
 | `src/components/settings/SettingsDialog.tsx` | 设置窗口加一个「语境查词」标签（类型里加 `'Odybo'`、标签列表加一项、渲染 `OdyboSettingsPanel`、重置表加一项） |
@@ -20,7 +21,7 @@
 
 - `context-paragraph.js`：整段上下文算法。PDF 按文字层的位置重建行、栏、段落；EPUB 取所在块加前后块；总长不超过 2000 字。回归测试在 `D:\Tools\CtxLookup\整段上下文\unit.mjs`。
 - `selection.ts`：选中文字时记下整段上下文，查词时按选中的文字取回。
-- `prompt.ts`：提示词，从电脑小工具 `D:\Tools\CtxLookup\ctx_lookup.py` 的 `SYSTEM` 原样抽出来。
+- `prompt.ts`：提示词，从电脑小工具 `D:\Tools\CtxLookup\ctx_lookup.py` 的 `SYSTEM` 原样抽出来。另有我们写的 `buildChunkPrompt` / `isChunkOf`：选中的是长句里的一截（超过六个词、整句比它长）时，照小工具把「所在句子」一起发过去，要求只翻译这一截、按整句理解，并加了一句「这一截可能不是完整的句子，缺的主语、谓语在整句哪里要按整句理解」，防止当独立句子讲错；预读长句的一截也用它。
 - `provider.ts`：顶替「语境词典」，用我们的提示词，答案边出边显示，同一个词同一段上下文查过就直接显示。
 - `history.ts`：查过的答案存进本机 IndexedDB（库名 `odybo-ctx-lookup`），关掉 App 也在。同一本书 + 同一个选中的内容 + 同一句算查过，直接显示并标「本机记录」。
 - `prefetch.ts`：句子预读，照小工具的 rolling_prefetch：卡片底部勾「本书自动预读」（每本书单独记，默认关）后，每次查完就从选中处往后预读 3 截（20 词以内整句一截，长句切成 8～20 词的几截，长句整句另外一份），同时最多 3 个请求，存进本机。选中的正好是预读过的一截或一句、或是某一截的一半以上，直接显示并标「预读」。不预读单个的词。
@@ -29,7 +30,11 @@
 - 生词预读（在 `prefetch.ts`）：句子预读时，预读的那几截里出现了生词本前 N 个（默认 20）、最近 D 天（默认 30）查过的词，就另外预读「这个词在这一句里」，每次最多 M 个（默认 5，0 = 不预读生词），每个词单独一次请求、格式和自己点查一样；句子的请求里也提醒 AI 一定解释这些生词（照小工具 vocab_hint）。点到这个词时直接显示，标「预读（生词）」。预读的答案被用上时也记进「自己查过的」。
 - 查词卡片底下（单词和短语）：「移出生词本」（再查会回来）、「忽略」（再查也不进生词本，生词本「已忽略」栏可恢复）；点透镜小字查的、生词本里还没有这个词时，第一个按钮换成「加入生词本」；最右边「生词本」直接打开生词本（`vocabLink.ts` 的 `openVocabBook`；`provider.ts` 会被打进服务端代码，不能直接引用 `SettingsPanel.tsx` 这类界面代码，否则安卓正式打包报错，网页开发版查不出来）。
 - `marks.ts`：在书里标出生词：预读过的（同一本书、同一个词、同一句）和自己查过的单词、短语（点透镜查的不算；忽略了的词不标），照透镜的做法包成 `<ruby class="wl-gloss odybo-vocab">`，字上面显示这一句里的解释（最多 8 个字）或一个粉色的点；同一个词透镜也标了就换成我们的。点一下走透镜那条路直接查。只用于 EPUB 这类能重排的书。查词时取上下文会去掉这些标注小字。
-- `ToolbarButton.tsx`：底部工具栏的「语境查词」按钮，点开四个开关：显示透镜、生词预读（关掉 = 不预读生词、书里也不标）、生词标法（解释 / 点）、本书自动预读。
+- `ToolbarButton.tsx`：底部工具栏的「语境查词」按钮，点开五个开关：显示透镜、生词预读（关掉 = 不预读生词、书里也不标）、生词标法（解释 / 点）、单击查词（默认关）、本书自动预读。
+- `tapLookup.ts`：单击查词。开着时，轻点正文里的一个英文单词（按手指位置找到字，再向两边扩到整个词，并确认真的点在这个词上）就查它，算自己查的；点空白处、页边照旧翻页、呼出菜单；只查单个词，短语和句子还是长按拖选；PDF 这类固定排版的书不做。
+- `vocabLink.ts`：卡片上「生词本」按钮打开设置窗口、直接到生词本页。
+
+跳到别的章节后怎么回来：这是 Readest 自带的。点书里的链接跳走后，底部工具栏的进度面板（手机 / 平板点「Reading Progress」，电脑底栏直接有）里有「Go Back」箭头，回到跳之前的位置；脚注是弹窗显示，不跳走。
 - `render.ts`：排版，照小工具：栏目名粉色、【这里的意思】大字、【整句翻译】浅蓝、词组等英文黄色；内容是「无」的栏目和【原形】不显示；最后附原句，选中的粉色加粗、词组短语加下划线。
 
 ## 怎么用
@@ -37,3 +42,49 @@
 1. 设置 → Language → Custom Translators → Add Translator：选 OpenAI Compatible，填 N1 的地址、密钥、模型（`gemini-3.8-flash-high(low)`）。
 2. 设置 → Language → Manage Dictionaries：打开 Context Dictionary（显示名是「语境查词」），拖到最上面。
 3. 选中文字 → Dictionary。
+
+## 开发、测试、编译（接手时照这里做）
+
+### 仓库和分支
+
+- 本机仓库 `D:\Project\Git Project\readest`，分支 `odybo`。远端 `fork` = 我们的 `OdybO/readest`（推这里），`origin` = 官方 `readest/readest`（只拉更新）。
+- 仓库设了不转换换行符（`git config core.autocrlf false`），否则格式检查全报错。
+- 规矩：我们的代码都放 `src/odybo/`；Readest 原来的代码只加最少的接入点，每处带 `[odybo]` 注释，并记进上面的改动点表。合并上游更新时只看这几处。
+- 推送用 `git push --no-verify fork odybo`：推送前的检查会跑全套测试，本机缺云端才有的环境变量，词典相关测试原版也照样失败。所以推之前自己跑类型检查（见下）。只限这个仓库的 `odybo` 分支。
+- pnpm 不在系统 PATH 里，在 `D:\Tools\pnpm`；跑命令前先 `export PATH="/d/Tools/pnpm:$PATH"`（Git Bash）。
+
+### 类型检查
+
+在 `apps/readest-app` 下：`NODE_OPTIONS=--max-old-space-size=8192 node_modules/.bin/tsc --noEmit`，没输出就是通过（不加内存参数会内存不够）。整段上下文算法另有回归测试：`node D:\Tools\CtxLookup\整段上下文\unit.mjs`，最后一行「全部通过」。
+
+### 网页版测试（大多数改动先在这里测，不用编译）
+
+1. 开网页开发服务：运行 `D:\Tools\pnpm\readest_web.cmd`，打开 `http://localhost:3300`。改代码后会自动刷新。
+2. 开探针（假 AI，不连外网、不用密钥）：`python -I D:\Tools\CtxLookup\测试脚本\ai_probe.py`，监听 `127.0.0.1:8747`。每个请求完整记进同目录的 `ai_probe.log`（看发出去的提示词、上下文对不对），回一段固定的按我们格式写的答案（【这里的意思】是「探针」，【原形】按选中的词猜）。它还把测试脚本目录里的文件放在 `http://127.0.0.1:8747/files/<文件名>`。
+3. 网页版设置里加一个自定义翻译器（OpenAI Compatible）指向探针地址，词典里打开「语境查词」拖到最上面（同「怎么用」）。
+4. 测试书 `D:\Tools\CtxLookup\测试脚本\vocab-test.epub`（书名 Word Form Test 2）：第一章 Vocab Prefetch Test 按步骤写了查哪些词测生词预读，第二章是各种词形（来自 `lemma_test.py epub` 生成的 `词形测试.epub`）。导入：在书库页用浏览器控制台从探针取文件，模拟拖进书库：
+   ```js
+   const blob = await (await fetch('http://127.0.0.1:8747/files/vocab-test.epub')).blob();
+   const dt = new DataTransfer(); dt.items.add(new File([blob], 'vocab-test.epub', { type: 'application/epub+zip' }));
+   for (const t of ['dragenter', 'dragover', 'drop']) document.body.dispatchEvent(new DragEvent(t, { bubbles: true, cancelable: true, dataTransfer: dt }));
+   ```
+   PDF 也能这样导入（暂时不测 PDF：能选中文字的 PDF 不如转成 EPUB 再读）。
+5. 已知网页版的限制：
+   - 要**从书库点开书**。直接刷新阅读页时 Readest 的章节载入事件有时收不到，透镜和我们的标注都不出来。
+   - Readest 自带的单词透镜在网页版用不了（它的词表从 cdn.readest.com 下载，只允许 readest.com 的网页取）。测「点透镜小字」可以在控制台手工把一个词包成 `<ruby class="wl-gloss">词<rt>提示</rt></ruby>` 再点它。
+   - 网页开发版不检查「服务端打包」的限制，安卓正式打包会：`provider.ts` 这类会被打进服务端的代码不能直接引用 React 界面代码（`.tsx` 组件、状态库），要用的话用 `import()` 用到时再加载（例：`vocabLink.ts`）。
+   - 在控制台里：`window.__odyboDocs` 是打开着的章节文档 → 书名，可以用它查书里的标注（`ruby.odybo-vocab`）。本机记录在 IndexedDB `odybo-ctx-lookup`（`history` 自己查的、`prefetch` 预读的），设置在 localStorage `odybo.*`。
+
+### 编译安卓版
+
+- 只编 64 位 ARM，在 GitHub 上编（`.github/workflows/odybo-android.yml`，手动触发，约 15 分钟）。gh 命令行在 `D:\Tools\gh\bin\gh.exe`（账号 OdybO）：
+  - 触发：`gh workflow run odybo-android.yml -R OdybO/readest --ref odybo`
+  - 等：`gh run watch <编号> -R OdybO/readest --exit-status`；失败看 `gh run view <编号> -R OdybO/readest --log-failed`
+  - 下载：`gh run download <编号> -R OdybO/readest -D D:\Tools\readest-apk\<提交号>`，得到 `app-universal-release.apk`
+- 签名：仓库 Secrets `ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`、`ANDROID_KEY_BASE64`，原件是 `D:\Tools\anx-keystore\anx.jks`。别换钥匙，换了平板上要卸载重装、记录全丢。
+- 拷到平板（联想 Y700，电脑上显示 LAVIE Tab 9QHD1）：`powershell -File D:\Tools\CtxLookup\测试脚本\copy_to_tablet.ps1 -File <apk> -NewName readest-odybo-<提交号>.apk`，放到 SD 卡的 Download 目录。平板上直接覆盖安装，设置和记录都在。
+- 包名 `com.odybo.readest`，和官方版能同时装。
+
+### 进度和讨论记录
+
+每一步做了什么、开发者定了什么、还剩什么，记在 `D:\Tools\CtxLookup\待办.md`「以后」一节、安卓阅读器（Anx → Readest）那一条下面，按日期往下接；新功能先在那里记方案。

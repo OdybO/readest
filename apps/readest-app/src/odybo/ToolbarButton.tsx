@@ -1,4 +1,4 @@
-// 阅读界面底部工具栏里我们的按钮：点开一个小面板，几个开关——显示透镜、生词预读、生词标法、本书自动预读。
+// 阅读界面底部工具栏里我们的按钮：点开一个小面板，几个开关——显示透镜、生词预读、生词标法、单击查词、本书自动预读。
 // 接入点：footerbar/NavigationBar.tsx（手机 / 平板底栏）和 footerbar/DesktopFooterBar.tsx（电脑底栏）各放一个 <OdyboToolbarButton>。
 // 面板用 portal 挂到页面最外层，免得被底栏的滚动区域裁掉。
 import React, { useState } from 'react';
@@ -86,6 +86,9 @@ const Panel: React.FC<{ bookKey: string; onClose: () => void }> = ({ bookKey, on
               </button>
             ))}
           </div>
+        </Row>
+        <Row label='单击查词' tip='轻点英文单词直接查；点空白处、页边照旧翻页'>
+          <Toggle checked={s.tapLookup} onChange={() => update({ tapLookup: !s.tapLookup })} />
         </Row>
         <Row
           label='本书自动预读'

@@ -8,7 +8,7 @@ import {
   loadSDK,
   stripReasoning,
 } from '@/services/translators/custom/openaiCompatible';
-import { ODYBO_SYSTEM_PROMPT } from './prompt';
+import { ODYBO_SYSTEM_PROMPT, buildChunkPrompt } from './prompt';
 import { PREFETCH_PARALLEL, getSettings } from './settings';
 import { vocabForPrefetch, type VocabEntry } from './vocab';
 import { remarkOpenDocs } from './marks';
@@ -134,9 +134,7 @@ const vocabHint = (u: Unit) =>
 
 const userPrompt = (book: string, u: Unit) =>
   u.kind === 'chunk'
-    ? `书名或文章：${book}\n\n选中的内容：${u.text}\n\n所在句子：${u.sentence}\n\n所在段落：${u.para}\n\n` +
-      '（选中的是长句里的一截。请结合整句理解：【翻译】只翻译这一截；【句子拆解】说明这一截在整句里的作用，以及它和前后部分怎么连起来）' +
-      vocabHint(u)
+    ? buildChunkPrompt(book, u.text, u.sentence, u.para, vocabHint(u))
     : `书名或文章：${book}\n\n选中的内容：${u.text}\n\n所在段落：${u.para}${u.kind === 'sent' ? vocabHint(u) : ''}`;
 
 /** 存进本机的键：句子和截按内容；生词按「这个词 + 所在句」（同一个词在别的句子里是另一份） */

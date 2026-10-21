@@ -18,6 +18,8 @@ export interface OdyboSettings {
   vocabPrefetch: boolean;
   /** 生词标法：gloss = 字上面显示这一句里的解释，dot = 只标一个带颜色的点 */
   vocabMarkStyle: 'gloss' | 'dot';
+  /** 单击查词：轻点正文里的英文单词就查它（点空白处照旧翻页、呼出菜单） */
+  tapLookup: boolean;
 }
 
 export const DEFAULT_SETTINGS: OdyboSettings = {
@@ -29,6 +31,7 @@ export const DEFAULT_SETTINGS: OdyboSettings = {
   vocabPerRun: 5,
   vocabPrefetch: true,
   vocabMarkStyle: 'gloss',
+  tapLookup: false,
 };
 
 /** 预读一次同时最多问几截（固定，不放进设置页；开发者 10-20 定） */
@@ -52,6 +55,7 @@ export const getSettings = (): OdyboSettings => {
           : DEFAULT_SETTINGS.vocabPerRun,
       vocabPrefetch: saved.vocabPrefetch !== false,
       vocabMarkStyle: saved.vocabMarkStyle === 'dot' ? 'dot' : 'gloss',
+      tapLookup: saved.tapLookup === true,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };

@@ -9,7 +9,7 @@ import {
 } from '@/services/translators/custom/openaiCompatible';
 import type { DictionaryProvider } from '@/services/dictionaries/types';
 import { BUILTIN_PROVIDER_IDS } from '@/services/dictionaries/types';
-import { ODYBO_SYSTEM_PROMPT, buildUserPrompt } from './prompt';
+import { ODYBO_SYSTEM_PROMPT, buildChunkPrompt, buildUserPrompt, isChunkOf } from './prompt';
 import { contextFor } from './selection';
 import { pickSentence, renderAnswer } from './render';
 import { findHistory, fingerprint, historyKey, saveHistory } from './history';
@@ -65,8 +65,12 @@ export const odyboContextProvider: DictionaryProvider = {
       : [before, word, sel?.after].filter(Boolean).join(' ').trim();
     // 选中处在上下文里的位置：我们的整段算法直接给出；退回 Readest 的前后文时，就在前文后面
     const at = mine ? mine.at : before ? before.length + 1 : 0;
-    const prompt = buildUserPrompt(sel?.bookTitle ?? '', word, sel ? context : '');
     const sentence = pickSentence(context, word, at);
+    // 选中的是长句里的一截：照小工具，把整句一起发过去，只翻译这一截
+    const prompt =
+      sel && sentence && isChunkOf(word, sentence)
+        ? buildChunkPrompt(sel.bookTitle ?? '', word, sentence, context)
+        : buildUserPrompt(sel?.bookTitle ?? '', word, sel ? context : '');
     const render = (container: HTMLElement, answer: string, done: boolean, note = '') =>
       renderAnswer(container, answer, { word, sentence, done, dark: ctx.isDarkMode, note });
     // 查过没有：同一本书 + 同一个选中的内容 + 同一句（找不到所在句时用整段上下文代替）
