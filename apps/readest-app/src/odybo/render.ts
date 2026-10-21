@@ -151,7 +151,12 @@ export const renderAnswer = (
   opts: { word: string; sentence: string; done: boolean; dark?: boolean; note?: string },
 ) => {
   const c = opts.dark === false ? LIGHT : DARK;
-  const { head, sections } = parse(answer, opts.done);
+  const { head: rawHead, sections } = parse(answer, opts.done);
+  // AI 偶尔在格式前面先自言自语一段（开发者 10-21 选 day—simple 时出现：「用户选中的是两个词跨破折号的片段……」）。
+  // 开头那行只该是音标：从第一个「英 /」或「美 /」开始留；没有音标（长句格式本来就没有）就整段不显示
+  const headText = rawHead.join(' ');
+  const ph = headText.search(/[英美]\s*\//);
+  const head = ph >= 0 ? [headText.slice(ph)] : [];
   const root = el('div', '', { lineHeight: '1.6' });
   const phrases: string[] = [];
   if (head.length) {

@@ -13,6 +13,10 @@ export const odyboTapWord = (event: MouseEvent): { word: string; range: Range } 
   const target = event.target as Element | null;
   const doc = target?.ownerDocument;
   if (!doc || target?.closest('rt, rp, input, textarea, button')) return null;
+  // 查词卡片开着、或者选着文字（选字工具条开着）：这一下是要关掉它们，照 Readest 原来的处理，不查词（开发者 10-21）
+  if (document.querySelector('[data-dict-content]')) return null;
+  const sel = doc.getSelection();
+  if (sel && !sel.isCollapsed) return null;
   // 手指所在的文字位置（Chrome / 安卓 WebView 用 caretRangeFromPoint，Firefox 用 caretPositionFromPoint）
   let node: Node | null = null;
   let offset = 0;
