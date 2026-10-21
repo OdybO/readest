@@ -32,27 +32,47 @@ const meaningOf = (answer: string) => {
   return cut > 0 ? first.slice(0, cut) : `${first.slice(0, 8)}…`;
 };
 
-/** 去掉我们上一次的标注（透镜的不动；原来是透镜的，还原成透镜的样子） */
-const clearOurs = (doc: Document) => {
-  doc.querySelectorAll(`ruby.${OUR_CLASS}`).forEach((ruby) => {
-    const lensGloss = ruby.getAttribute('data-odybo-lens');
-    if (lensGloss !== null) {
-      ruby.classList.remove(OUR_CLASS);
-      ruby.removeAttribute('data-odybo-lens');
-      const rt = ruby.querySelector('rt');
-      if (rt) {
-        rt.textContent = lensGloss;
-        rt.removeAttribute('style');
-      }
-      return;
+/** 拆掉我们的一个标注（原来是透镜的，还原成透镜的样子） */
+const unwrapOne = (ruby: Element) => {
+  const lensGloss = ruby.getAttribute('data-odybo-lens');
+  if (lensGloss !== null) {
+    ruby.classList.remove(OUR_CLASS);
+    ruby.removeAttribute('data-odybo-lens');
+    const rt = ruby.querySelector('rt');
+    if (rt) {
+      rt.textContent = lensGloss;
+      rt.removeAttribute('style');
     }
-    ruby.querySelectorAll('rt').forEach((rt) => rt.remove());
-    const parent = ruby.parentNode;
-    if (!parent) return;
-    while (ruby.firstChild) parent.insertBefore(ruby.firstChild, ruby);
-    parent.removeChild(ruby);
+    return;
+  }
+  ruby.querySelectorAll('rt').forEach((rt) => rt.remove());
+  const parent = ruby.parentNode;
+  if (!parent) return;
+  while (ruby.firstChild) parent.insertBefore(ruby.firstChild, ruby);
+  parent.removeChild(ruby);
+  parent.normalize(); // 只合并这一处拆开的文字
+};
+
+/** 去掉我们的全部标注（关掉「生词预读」时） */
+const clearOurs = (doc: Document) => {
+  doc.querySelectorAll(`ruby.${OUR_CLASS}`).forEach(unwrapOne);
+};
+
+/** 标注里的词本身（不算 rt 小字）：第一个文字节点和总长度 */
+const baseOf = (ruby: Element) => {
+  let first: Text | null = null;
+  let len = 0;
+  const w = ruby.ownerDocument.createTreeWalker(ruby, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) =>
+      (n as Text).parentElement?.closest('rt, rp')
+        ? NodeFilter.FILTER_REJECT
+        : NodeFilter.FILTER_ACCEPT,
   });
-  (doc.body ?? doc.documentElement)?.normalize();
+  for (let n = w.nextNode(); n; n = w.nextNode()) {
+    first ??= n as Text;
+    len += (n as Text).data.length;
+  }
+  return { first, len };
 };
 
 /** 章节里所有正文文字拼起来（透镜包过的词也算，标注小字 rt 不算），记下每一段在哪个文字节点 */
@@ -64,6 +84,7 @@ const textModel = (doc: Document) => {
     return {
       text,
       locate: (_offset: number, _atEnd?: boolean) => null as { node: Text; offset: number } | null,
+      offsetOf: (_node: Text | null) => -1,
     };
   const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode: (n) =>
@@ -86,7 +107,10 @@ const textModel = (doc: Document) => {
     }
     return found ? { node: found.node, offset: offset - found.start } : null;
   };
-  return { text, locate };
+  // 某个文字节点在整章文字里从第几个字开始（找已有的标注在哪）
+  const starts = new Map(segs.map((s) => [s.node, s.start]));
+  const offsetOf = (node: Text | null) => (node ? (starts.get(node) ?? -1) : -1);
+  return { text, locate, offsetOf };
 };
 
 const styleRt = (rt: HTMLElement, gloss: boolean) => {
@@ -126,9 +150,8 @@ export const markVocabInDoc = async (doc: Document, book: string) => {
   void import('./dataSync').then((m) => m.syncSoon()); // 打开书时顺便和 WebDAV 同步（最多 10 分钟一次）
   if (busy()) return markLater(doc, book);
   try {
-    clearOurs(doc);
     const st = getSettings();
-    if (!st.vocabPrefetch) return; // 生词预读关着：不标
+    if (!st.vocabPrefetch) return clearOurs(doc); // 生词预读关着：不标
     const pre = (await listByBook<PrefetchRecord>(PREFETCH, book)).filter((r) => r.kind === 'word');
     const own = (await listByBook<HistoryRecord>(HISTORY, book))
       .filter((r) => r.sentence && isVocab(r.word))
@@ -138,10 +161,11 @@ export const markVocabInDoc = async (doc: Document, book: string) => {
       const lemma = lemmaOf({ word: r.text, answer: r.answer });
       return !isIgnored(lemma) && !isDeletedBefore(lemma, r.at);
     });
-    if (!recs.length || !doc.defaultView) return;
+    if (!doc.defaultView) return;
     if (busy()) return markLater(doc, book); // 读记录的这段时间里打开了查词卡片
-    clearOurs(doc); // 等记录的这段时间里可能又标过一次
-    const model = textModel(doc);
+    // 只改要变的（开发者 10-21：整章拆掉重标时文字会跳一下）：算出这一章应该有哪些标注，
+    // 和已有的比——一样的不动，只是字不同的原地改字，不该有的拆掉，新的才包上
+    let model = textModel(doc);
     const lower = model.text.toLowerCase();
     const targets: { start: number; end: number; rec: { answer: string } }[] = [];
     const taken = new Set<number>(); // 自己查过、又预读过的同一处只标一次
@@ -160,14 +184,37 @@ export const markVocabInDoc = async (doc: Document, book: string) => {
       taken.add(start);
       targets.push({ start, end: start + wm[0].length, rec });
     }
+    const gloss = st.vocabMarkStyle === 'gloss';
+    const labelOf = (answer: string) => (gloss ? meaningOf(answer) || '●' : '●');
+    const want = new Map(targets.map((t) => [`${t.start}:${t.end}`, t]));
+    let removed = false;
+    for (const ruby of [...doc.querySelectorAll(`ruby.${OUR_CLASS}`)]) {
+      const { first, len } = baseOf(ruby);
+      const start = model.offsetOf(first);
+      const key = `${start}:${start + len}`;
+      const t = start >= 0 ? want.get(key) : undefined;
+      if (!t) {
+        unwrapOne(ruby);
+        removed = true;
+        continue;
+      }
+      want.delete(key);
+      const rt = ruby.querySelector('rt') as HTMLElement | null;
+      const label = labelOf(t.rec.answer);
+      if (rt && (rt.textContent !== label || rt.style.fontWeight !== (gloss ? 'normal' : 'bold'))) {
+        rt.textContent = label;
+        styleRt(rt, gloss);
+      }
+    }
+    if (!want.size) return;
+    if (removed) model = textModel(doc); // 拆过的地方文字节点变了，重新算位置
     // 从后往前包，前面的位置不受影响
-    targets.sort((a, b) => b.start - a.start);
-    for (const t of targets) {
+    const todo = [...want.values()].sort((a, b) => b.start - a.start);
+    for (const t of todo) {
       const s = model.locate(t.start);
       const e = model.locate(t.end, true);
       if (!s || !e || s.node !== e.node) continue;
-      const gloss = st.vocabMarkStyle === 'gloss';
-      const label = gloss ? meaningOf(t.rec.answer) || '●' : '●';
+      const label = labelOf(t.rec.answer);
       const lens = s.node.parentElement?.closest(`ruby.${LENS_CLASS}`) as HTMLElement | null;
       if (lens && !lens.classList.contains(OUR_CLASS)) {
         // 同一个词透镜也标了：换成我们的（只显示一层），记下透镜原来的提示，清掉时还原
