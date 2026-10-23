@@ -148,7 +148,15 @@ export const renderAnswer = (
   container: HTMLElement,
   answer: string,
   /** note：显示在最下面的灰色小字，比如「本机记录」（没问 AI，直接用存下来的答案） */
-  opts: { word: string; sentence: string; done: boolean; dark?: boolean; note?: string },
+  opts: {
+    word: string;
+    sentence: string;
+    done: boolean;
+    dark?: boolean;
+    note?: string;
+    /** 放在开头那行（音标）右边、竖直居中的按钮，比如「删除」；没有音标行（长句格式）就单独一行靠右 */
+    action?: HTMLElement;
+  },
 ) => {
   const c = opts.dark === false ? LIGHT : DARK;
   const { head: rawHead, sections } = parse(answer, opts.done);
@@ -159,11 +167,19 @@ export const renderAnswer = (
   const head = ph >= 0 ? [headText.slice(ph)] : [];
   const root = el('div', '', { lineHeight: '1.6' });
   const phrases: string[] = [];
-  if (head.length) {
-    // 开头那行：音标和词性，灰色
-    root.append(el('div', head.join(' ').replace(/^\*\s*/, ''), { color: c.dim }));
+  if (head.length || opts.action) {
+    // 开头那行：音标和词性，灰色；右边放按钮（删除），竖直居中——放最上面，不用往下滑（开发者 10-23）
+    const row = el('div', '', {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: head.length ? 'space-between' : 'flex-end',
+      gap: '8px',
+    });
+    if (head.length) row.append(el('div', head.join(' ').replace(/^\*\s*/, ''), { color: c.dim }));
+    if (opts.action) row.append(opts.action);
+    root.append(row);
   }
-  let first = !head.length;
+  let first = !head.length && !opts.action;
   for (const sec of sections) {
     if (sec.label === '原形' || isEmptySection(sec) || isTrivialBreakdown(sec)) continue;
     root.append(

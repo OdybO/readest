@@ -102,6 +102,16 @@ const Panel: React.FC<{ bookKey: string; onClose: () => void; onIntro: () => voi
             ))}
           </div>
         </Row>
+        <Row
+          label='词组下划虚线'
+          tip='词组用蓝色标；下面再加一条蓝色虚线，看出它管到哪（和书里的标注线重叠时可以关）'
+        >
+          <Toggle
+            checked={s.phraseUnderline}
+            disabled={!s.vocabPrefetch}
+            onChange={() => update({ phraseUnderline: !s.phraseUnderline })}
+          />
+        </Row>
         <Row label='单击查词' tip='轻点英文单词直接查；两指轻点呼出菜单；点空白处、页边照旧'>
           <Toggle checked={s.tapLookup} onChange={() => update({ tapLookup: !s.tapLookup })} />
         </Row>

@@ -122,6 +122,68 @@ export const putRecord = async (
   }
 };
 
+// ---------- 删掉一条记录（卡片上的「删除」，开发者 10-23：误点查出来的留着没用） ----------
+// 删除要记下来（odybo.removedRecords：「库名|键」→ 删除时间），同步时告诉别的设备（dataSync.ts 的 state.json），
+// 不然下次同步会从别的设备的文件里把它拉回来。删除之后再查同一处，新记录的时间比删除晚，照常存。
+const REMOVED_KEY = 'odybo.removedRecords';
+const readRemoved = (): Record<string, number> => {
+  try {
+    return JSON.parse(localStorage.getItem(REMOVED_KEY) || '{}');
+  } catch {
+    return {};
+  }
+};
+const writeRemoved = (m: Record<string, number>) => {
+  try {
+    localStorage.setItem(REMOVED_KEY, JSON.stringify(m));
+  } catch {
+    // 存不了就只在这次打开时有效
+  }
+};
+/** 这条记录（时间 t）是不是在删除之前的：是的话同步时不要再拉回来 */
+export const isRemoved = (store: string, key: string, t: number) =>
+  t <= (readRemoved()[`${store}|${key}`] ?? 0);
+
+/** 删掉一条记录；silent：别的设备删的（同步拉下来），不再通知上传 */
+export const deleteRecord = async (store: string, key: string, at = Date.now(), silent = false) => {
+  try {
+    const rec = await getRecord<{ createdAt?: number }>(store, key);
+    await run(store, 'readwrite', (s) => s.delete(key));
+    writeRemoved({ ...readRemoved(), [`${store}|${key}`]: at });
+    if (!silent) {
+      // 这条所在的月份文件要重写（去掉它），state.json 要带上删除记号
+      if (rec)
+        notifyChange({ kind: store === HISTORY ? 'history' : 'prefetch', at: rec.createdAt });
+      notifyChange({ kind: 'state' });
+    }
+  } catch (e) {
+    console.warn('[odybo] 删本机记录失败', e);
+  }
+};
+
+/** 同步用：全部删除记号 */
+export const exportRemoved = () => readRemoved();
+/** 同步用：别的设备删的，本机还留着且比删除早的，也删掉。返回删了几条。 */
+export const importRemoved = async (remote: Record<string, number>) => {
+  const mine = readRemoved();
+  let n = 0;
+  for (const [id, at] of Object.entries(remote ?? {})) {
+    if (at <= (mine[id] ?? 0)) continue;
+    const cut = id.indexOf('|');
+    const store = id.slice(0, cut);
+    const key = id.slice(cut + 1);
+    const rec = await getRecord<{ createdAt: number }>(store, key);
+    if (rec && rec.createdAt <= at) {
+      // 不用 silent：本机自己的月份文件里还有这条，要重写一遍去掉它（state.json 带上删除记号也无妨，别的设备收到时间一样就跳过）
+      await deleteRecord(store, key, at);
+      n++;
+    } else {
+      writeRemoved({ ...readRemoved(), [id]: at });
+    }
+  }
+  return n;
+};
+
 /** 这本书预读过的全部（找「选中的是某一截的一部分」时用）。 */
 export const listByBook = async <T>(store: string, book: string): Promise<T[]> => {
   try {

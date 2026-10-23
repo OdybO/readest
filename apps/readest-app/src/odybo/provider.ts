@@ -14,7 +14,17 @@ import { getPrompts, refreshPrompts } from './remotePrompts';
 import { syncSoon } from './dataSync';
 import { contextFor } from './selection';
 import { pickSentence, renderAnswer } from './render';
-import { findHistory, fingerprint, historyKey, saveHistory } from './history';
+import {
+  HISTORY,
+  PREFETCH,
+  deleteRecord,
+  findHistory,
+  fingerprint,
+  getRecord,
+  historyKey,
+  prefetchKey,
+  saveHistory,
+} from './history';
 import { getSettings } from './settings';
 import { remarkOpenDocs } from './marks';
 import {
@@ -76,18 +86,61 @@ export const odyboContextProvider: DictionaryProvider = {
       sel && sentence && isChunkOf(word, sentence)
         ? buildChunkPrompt(sel.bookTitle ?? '', word, sentence, context, '', prompts.chunk)
         : buildUserPrompt(sel?.bookTitle ?? '', word, sel ? context : '');
+    // 答案出完才在音标那行右边放「删除」（查词中途不放）
     const render = (container: HTMLElement, answer: string, done: boolean, note = '') =>
-      renderAnswer(container, answer, { word, sentence, done, dark: ctx.isDarkMode, note });
+      renderAnswer(container, answer, {
+        word,
+        sentence,
+        done,
+        dark: ctx.isDarkMode,
+        note,
+        action: done && answer ? deleteButton() : undefined,
+      });
     // 查过没有：同一本书 + 同一个选中的内容 + 同一句（找不到所在句时用整段上下文代替）
     const book = [sel?.bookTitle, sel?.bookAuthor].filter(Boolean).join(' / ');
     const key = historyKey(book, word, sentence || context);
     const rec = await findHistory(key);
     const hit = cache.get(key) ?? rec?.answer;
+    let saving: Promise<unknown> = Promise.resolve(); // 正在存的这次记录：删除要等它存完再删
+    // 「删除」：误点查出来的留着没用（开发者 10-23）。要点两次。删掉这次的记录（这一次如果用的是预读的答案，
+    // 那条预读也删，下次再选同一处会重新问 AI），书里这一处的标注拆掉，关掉卡片；删除会同步给别的设备（history.ts）
+    const deleteButton = () => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn-xs btn-ghost text-error shrink-0';
+      btn.textContent = '删除';
+      let armed = false;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!armed) {
+          armed = true;
+          btn.textContent = '再点一次删除';
+          btn.classList.replace('btn-ghost', 'btn-error');
+          timer = setTimeout(() => {
+            armed = false;
+            btn.textContent = '删除';
+            btn.classList.replace('btn-error', 'btn-ghost');
+          }, 3000);
+          return;
+        }
+        if (timer) clearTimeout(timer);
+        btn.disabled = true;
+        await saving;
+        await deleteRecord(HISTORY, key);
+        cache.delete(key);
+        for (const pk of [prefetchKey(book, word), prefetchKey(book, `${word} | ${sentence}`)])
+          if (await getRecord(PREFETCH, pk)) await deleteRecord(PREFETCH, pk);
+        remarkOpenDocs(book);
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      });
+      return btn;
+    };
     // 又查了一次：刷新「最近查询」时间（生词本按它分栏；删掉的生词再查一次也会因此回来）
     // 自己选中再查一次：原来是点透镜查的那条也改记成自己查的（这样才进生词本）
     // 点透镜又查一次：原来已经算自己查的（或点过「加入生词本」）就保持，不降回透镜
     if (rec)
-      void saveHistory({
+      saving = saveHistory({
         ...rec,
         createdAt: Date.now(),
         source: rec.source === 'lens' ? (lensSource ?? 'lookup') : rec.source,
@@ -163,7 +216,7 @@ export const odyboContextProvider: DictionaryProvider = {
     //     点透镜小字查的也算（开发者 10-21：划词、点透镜都说明不认识），不用另外「加入生词本」
     //   忽略：没忽略 ⇄ 已忽略（忽略后再查也不进生词本）
     const vocabButtons = (section: HTMLElement, answer: string) => {
-      if (!isVocab(word) || !answer) return;
+      if (!isVocab(answer, word)) return;
       const lemma = lemmaOf({ word, answer });
       if (!lemma) return;
       const row = document.createElement('div');
@@ -228,7 +281,7 @@ export const odyboContextProvider: DictionaryProvider = {
     if (ctx.signal.aborted) return { ok: false, reason: 'error', message: 'aborted' };
     if (pre) {
       cache.set(key, pre.answer);
-      void keep(pre.answer);
+      saving = keep(pre.answer);
       render(ctx.container, pre.answer, true, pre.note);
       footer(pre.answer);
       return { ok: true, headword: word, sourceLabel: translator.name };
@@ -263,7 +316,7 @@ export const odyboContextProvider: DictionaryProvider = {
       if (answer) {
         if (cache.size >= MAX_CACHE) cache.delete(cache.keys().next().value!);
         cache.set(key, answer);
-        void saveHistory({
+        saving = saveHistory({
           key,
           book,
           word,

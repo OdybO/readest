@@ -38,6 +38,10 @@ const unwrapOne = (ruby: Element) => {
   if (lensGloss !== null) {
     ruby.classList.remove(OUR_CLASS);
     ruby.removeAttribute('data-odybo-lens');
+    ruby.removeAttribute('data-odybo-sig');
+    (ruby as HTMLElement).style.textDecoration = '';
+    (ruby as HTMLElement).style.textUnderlineOffset = '';
+    (ruby as HTMLElement).style.whiteSpace = '';
     const rt = ruby.querySelector('rt');
     if (rt) {
       rt.textContent = lensGloss;
@@ -113,11 +117,38 @@ const textModel = (doc: Document) => {
   return { text, locate, offsetOf };
 };
 
-const styleRt = (rt: HTMLElement, gloss: boolean) => {
-  Object.assign(rt.style, {
-    color: '#e8649a',
-    fontSize: gloss ? '0.55em' : '0.6em',
-    fontWeight: gloss ? 'normal' : 'bold',
+// 单个词粉色；词组（两个词以上）蓝色，下面可以加一条蓝色虚线标出它从哪到哪（开发者 10-23：只看颜色就知道是词还是词组；
+// 虚线可能和 Readest 自己的标注下划线重叠，所以做成开关，设置项 phraseUnderline）
+const WORD_COLOR = '#e8649a';
+const PHRASE_COLOR = '#3b82f6';
+
+/** 给一个标注上字、上色；data-odybo-sig 记下这次的样子，下次一样就不动 */
+const applyStyle = (
+  ruby: HTMLElement,
+  rt: HTMLElement | null,
+  label: string,
+  gloss: boolean,
+  phrase: boolean,
+  underline: boolean,
+) => {
+  const sig = `${label}|${gloss}|${phrase}|${underline}`;
+  if (ruby.getAttribute('data-odybo-sig') === sig) return;
+  ruby.setAttribute('data-odybo-sig', sig);
+  const color = phrase ? PHRASE_COLOR : WORD_COLOR;
+  if (rt) {
+    rt.textContent = label;
+    Object.assign(rt.style, {
+      color,
+      fontSize: gloss ? '0.55em' : '0.6em',
+      fontWeight: gloss ? 'normal' : 'bold',
+      textDecoration: 'none',
+    });
+  }
+  Object.assign(ruby.style, {
+    textDecoration: phrase && underline ? `underline dotted ${color}` : '',
+    textUnderlineOffset: phrase && underline ? '3px' : '',
+    // 不许在标注中间换行：不然行尾的词组会从单词中间断开（网页上 In the end 被拆成「I」和「n the end」，上面的解释也断成两截）
+    whiteSpace: 'nowrap',
   });
 };
 
@@ -154,7 +185,7 @@ export const markVocabInDoc = async (doc: Document, book: string) => {
     if (!st.vocabPrefetch) return clearOurs(doc); // 生词预读关着：不标
     const pre = (await listByBook<PrefetchRecord>(PREFETCH, book)).filter((r) => r.kind === 'word');
     const own = (await listByBook<HistoryRecord>(HISTORY, book))
-      .filter((r) => r.sentence && isVocab(r.word))
+      .filter((r) => r.sentence && isVocab(r.answer, r.word))
       .map((r) => ({ text: r.word, sentence: r.sentence, answer: r.answer, at: r.createdAt }));
     // 忽略了的不标；移出生词本的，移出之前的记录不标（再查一次又会标）
     const recs = [...own, ...pre.map((r) => ({ ...r, at: r.createdAt }))].filter((r) => {
@@ -167,7 +198,7 @@ export const markVocabInDoc = async (doc: Document, book: string) => {
     // 和已有的比——一样的不动，只是字不同的原地改字，不该有的拆掉，新的才包上
     let model = textModel(doc);
     const lower = model.text.toLowerCase();
-    const targets: { start: number; end: number; rec: { answer: string } }[] = [];
+    const targets: { start: number; end: number; rec: { answer: string; text: string } }[] = [];
     const taken = new Set<number>(); // 自己查过、又预读过的同一处只标一次
     for (const rec of recs) {
       const words = rec.sentence.split(/\s+/).filter(Boolean).map(escRe);
@@ -186,6 +217,9 @@ export const markVocabInDoc = async (doc: Document, book: string) => {
     }
     const gloss = st.vocabMarkStyle === 'gloss';
     const labelOf = (answer: string) => (gloss ? meaningOf(answer) || '●' : '●');
+    const isPhrase = (t: { rec: { text: string } }) => /\s/.test(t.rec.text.trim());
+    const style = (ruby: HTMLElement, rt: HTMLElement | null, t: (typeof targets)[number]) =>
+      applyStyle(ruby, rt, labelOf(t.rec.answer), gloss, isPhrase(t), st.phraseUnderline);
     const want = new Map(targets.map((t) => [`${t.start}:${t.end}`, t]));
     let removed = false;
     for (const ruby of [...doc.querySelectorAll(`ruby.${OUR_CLASS}`)]) {
@@ -199,12 +233,7 @@ export const markVocabInDoc = async (doc: Document, book: string) => {
         continue;
       }
       want.delete(key);
-      const rt = ruby.querySelector('rt') as HTMLElement | null;
-      const label = labelOf(t.rec.answer);
-      if (rt && (rt.textContent !== label || rt.style.fontWeight !== (gloss ? 'normal' : 'bold'))) {
-        rt.textContent = label;
-        styleRt(rt, gloss);
-      }
+      style(ruby as HTMLElement, ruby.querySelector('rt'), t); // 样子没变就什么都不做
     }
     if (!want.size) return;
     if (removed) model = textModel(doc); // 拆过的地方文字节点变了，重新算位置
@@ -214,17 +243,13 @@ export const markVocabInDoc = async (doc: Document, book: string) => {
       const s = model.locate(t.start);
       const e = model.locate(t.end, true);
       if (!s || !e || s.node !== e.node) continue;
-      const label = labelOf(t.rec.answer);
       const lens = s.node.parentElement?.closest(`ruby.${LENS_CLASS}`) as HTMLElement | null;
       if (lens && !lens.classList.contains(OUR_CLASS)) {
         // 同一个词透镜也标了：换成我们的（只显示一层），记下透镜原来的提示，清掉时还原
         const rt = lens.querySelector('rt') as HTMLElement | null;
         lens.setAttribute('data-odybo-lens', rt?.textContent ?? '');
         lens.classList.add(OUR_CLASS);
-        if (rt) {
-          rt.textContent = label;
-          styleRt(rt, gloss);
-        }
+        style(lens, rt, t);
         continue;
       }
       const range = doc.createRange();
@@ -235,8 +260,7 @@ export const markVocabInDoc = async (doc: Document, book: string) => {
       ruby.setAttribute('cfi-skip', '');
       const rt = doc.createElement('rt');
       rt.setAttribute('cfi-inert', '');
-      rt.textContent = label;
-      styleRt(rt, gloss);
+      style(ruby, rt, t);
       try {
         ruby.appendChild(range.extractContents());
         ruby.appendChild(rt);

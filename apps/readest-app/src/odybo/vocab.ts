@@ -28,11 +28,16 @@ export interface VocabEntry {
   lookups: VocabLookup[];
 }
 
-/** 生词本只收单词和短语（六个词以内），长句只留在查询记录里（照 ctx_lookup.py 的 is_vocab）。 */
-export const isVocab = (word: string) => {
-  const w = (word || '').trim();
+/** 算不算生词（进生词本、书里标出来）：AI 的回答里【原形】写了英文才算（10-23 开发者定，不再数个数）。
+ * 提示词让 AI 判断：单个词、固定搭配（不管几个词、包括中间插词的）写原形；两三个普通的词组合原形写「无」；
+ * 半截句子、整句用长句格式，没有【原形】。原来「六个词以内」会把半截句子收进生词本。
+ * 回答里没有【原形】这一栏的老记录（查词格式），还按原来的个数规则算（照 ctx_lookup.py 的 is_vocab_rec）。 */
+export const isVocab = (answer: string, word = '') => {
+  const a = answer || '';
+  if (a.includes('【原形】')) return /【原形】\s*[A-Za-z]/.test(a);
+  const w = word.trim();
   const n = w.split(/\s+/).length;
-  if (n >= 3 && /[.!?]["”’)]?$/.test(w)) return false;
+  if (!a.includes('【这里的意思】') || (n >= 3 && /[.!?]["”’)]?$/.test(w))) return false;
   return !!w && n <= 6 && /[A-Za-z]/.test(w);
 };
 
@@ -140,7 +145,7 @@ export const loadVocab = async (): Promise<VocabEntry[]> => {
   const groups = new Map<string, VocabEntry & { lastAnswer: string }>();
   recs.sort((a, b) => a.createdAt - b.createdAt);
   for (const r of recs) {
-    if (!isVocab(r.word)) continue; // 点单词透镜查的也算（10-21 开发者定：点了就是不认识）
+    if (!isVocab(r.answer, r.word)) continue; // 点单词透镜查的也算（10-21 开发者定：点了就是不认识）
     const lemma = lemmaOf(r);
     if (!lemma || lemma in ignored || r.createdAt <= (deleted[lemma] ?? 0)) continue;
     let g = groups.get(lemma);

@@ -1,13 +1,23 @@
 // 我们的数据同步备份到 WebDAV（开发者 10-21 定）：查词记录、预读结果（可关）、生词的移出和忽略、我们的设置。
 // 用 Readest 设置里的 WebDAV 地址、账号、根目录，放在 <根目录>/odybo/data/<设备>/ 下（N1 上是 X:\Private\ReadestSync\odybo\data\）：
-//   state.json             移出 / 忽略的词、我们的设置（各带时间）
+//   state.json             移出 / 忽略的词、我们的设置（各带时间）、删掉的记录（卡片上「删除」，带删除时间）
 //   history-YYYY-MM.json   这个月的查词记录（按记录的时间分月）
 //   prefetch-YYYY-MM.json  这个月的预读结果
 // 每台设备只写自己的文件夹，所以两台同时用不会互相覆盖；每台都读别人的文件夹，同一条（同一本书、同一个内容、同一句）按时间新的为准。
 // 重装以后设备名会变，旧设备的文件夹当成「别的设备」读回来，就恢复了。
 // 什么时候同步：打开书、查词时最多 10 分钟拉一次；本机数据改了，1 分钟后上传一次；设置页可以马上同步。
 // 状态库和 WebDAV 函数用到时再加载（这个文件会被 provider.ts 引用，见 vocabLink.ts 的说明）。
-import { HISTORY, PREFETCH, getRecord, listAll, putRecord, type HistoryRecord } from './history';
+import {
+  HISTORY,
+  PREFETCH,
+  exportRemoved,
+  getRecord,
+  importRemoved,
+  isRemoved,
+  listAll,
+  putRecord,
+  type HistoryRecord,
+} from './history';
 import { onChange } from './changes';
 import { exportFlags, importFlags } from './vocab';
 import { exportSettings, getSettings, importSettings } from './settings';
@@ -89,7 +99,7 @@ type Conn = NonNullable<Awaited<ReturnType<typeof connect>>>;
 const importRecords = async (store: string, recs: { key: string; createdAt: number }[]) => {
   let n = 0;
   for (const r of recs) {
-    if (!r?.key) continue;
+    if (!r?.key || isRemoved(store, r.key, r.createdAt)) continue; // 删过的不拉回来
     const mine = await getRecord<{ createdAt: number }>(store, r.key);
     if (!mine || r.createdAt > mine.createdAt) {
       await putRecord(store, r, true);
@@ -124,6 +134,7 @@ const pull = async (c: Conn) => {
         if (f.name === 'state.json') {
           records += importFlags(data.flags ?? {});
           if (importSettings(data.settings)) records++;
+          records += await importRemoved(data.removed ?? {});
         } else if (f.name.startsWith('history-')) {
           records += await importRecords(HISTORY, data.records ?? []);
         } else if (f.name.startsWith('prefetch-')) {
@@ -142,7 +153,8 @@ const pull = async (c: Conn) => {
 
 const buildFile = async (name: string) => {
   const head = { device: deviceId(), updatedAt: Date.now() };
-  if (name === 'state.json') return { ...head, flags: exportFlags(), settings: exportSettings() };
+  if (name === 'state.json')
+    return { ...head, flags: exportFlags(), settings: exportSettings(), removed: exportRemoved() };
   const m = name.match(/^(history|prefetch)-(\d{4}-\d{2})\.json$/);
   if (!m) return null;
   const store = m[1] === 'history' ? HISTORY : PREFETCH;

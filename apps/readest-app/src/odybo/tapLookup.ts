@@ -4,15 +4,107 @@
 // 接入点：app/reader/utils/iframeEventHandlers.ts 的单击处理里，透镜判断后面调用 odyboTapWord(event)；
 //         Annotator.tsx 的 handleWordLensDictionary 收下这里给的选区。
 import { getSettings } from './settings';
+import { HISTORY, listAll, type HistoryRecord } from './history';
+import { onChange } from './changes';
+import { isIgnored, lemmaOf } from './vocab';
+import { parseWordList } from './commonWords';
+import { getPrompts } from './remotePrompts';
+
+// ---------- 单击时跳过哪些词（开发者 10-23） ----------
+// 跳过：生词本里忽略过的词；常用词表（commonWords.ts，WebDAV 上 common_words.txt 可改）里的词。
+// 但自己查过的词（长按查过一次）下次单击照常查。跳过 = 当成点空白处（照旧翻页、呼出菜单）；长按选中照样能查。
+let looked: Set<string> | null = null; // 自己查过的单词和它们的原形（小写）
+let loading = false;
+const loadLooked = () => {
+  if (loading) return;
+  loading = true;
+  void listAll<HistoryRecord>(HISTORY)
+    .then((recs) => {
+      const s = new Set<string>();
+      for (const r of recs) {
+        const w = r.word.trim().toLowerCase();
+        if (/^[a-z'’-]+$/.test(w)) s.add(w.replace(/’/g, "'"));
+        s.add(lemmaOf(r).toLowerCase());
+      }
+      looked = s;
+    })
+    .finally(() => {
+      loading = false;
+    });
+};
+onChange((c) => {
+  if (c.kind === 'history') loadLooked(); // 查了新词、删了记录、同步拉下来：重新读一遍
+});
+
+let commonText = '';
+let common = new Set<string>();
+const commonWords = () => {
+  const text = getPrompts().commonWords;
+  if (text !== commonText) {
+    commonText = text;
+    common = parseWordList(text);
+  }
+  return common;
+};
+
+/** 去掉常见词尾，猜几个原形（players → player，played → play），用来对忽略的词 */
+const stems = (w: string) => {
+  const out = new Set([w]);
+  for (const [suf, add] of [
+    ['ies', 'y'],
+    ['es', ''],
+    ['s', ''],
+    ['ed', ''],
+    ['ed', 'e'],
+    ['ing', ''],
+    ['ing', 'e'],
+  ] as const)
+    if (w.endsWith(suf) && w.length > suf.length + 2) out.add(w.slice(0, -suf.length) + add);
+  return out;
+};
+
+const skipTap = (word: string) => {
+  const w = word.toLowerCase().replace(/’/g, "'");
+  for (const s of stems(w)) if (isIgnored(s)) return true; // 忽略过的：查过也跳过
+  if (!looked) loadLooked();
+  if (looked?.has(w)) return false; // 常用词里自己查过的照常查
+  return commonWords().has(w);
+};
 
 const WORD_CHAR = /[A-Za-z0-9'’-]/;
 
+// 点在 Readest 自己的高亮、下划线（自己做的笔记）上：单击查词让开，交给 Readest 选中整条、弹出高亮菜单（开发者 10-23）。
+// 高亮是 foliate 在每一章上面画的一层（overlayer），用它的 hitTest 看点没点中；搜索结果的高亮不算。
+// 状态库用到时再加载（见 vocabLink.ts 的说明），加载好之前当作没点中。
+type Overlayer = { hitTest: (e: MouseEvent) => [string?, ...unknown[]] };
+let getViewOf: ((key: string) => unknown) | null = null;
+void import('@/store/readerStore').then((m) => {
+  getViewOf = (key) => m.useReaderStore.getState().getView(key);
+});
+const onReadestHighlight = (event: MouseEvent, doc: Document, bookKey?: string) => {
+  if (!bookKey || !getViewOf) return false;
+  try {
+    const view = getViewOf(bookKey) as {
+      renderer?: { getContents?: () => { doc: Document; overlayer?: Overlayer }[] };
+    } | null;
+    const content = view?.renderer?.getContents?.().find((c) => c.doc === doc);
+    const [value] = content?.overlayer?.hitTest(event) ?? [];
+    return !!value && !value.startsWith('foliate-search:');
+  } catch {
+    return false;
+  }
+};
+
 /** 轻点处是不是一个英文单词：是就返回这个词和它的选区 */
-export const odyboTapWord = (event: MouseEvent): { word: string; range: Range } | null => {
+export const odyboTapWord = (
+  event: MouseEvent,
+  bookKey?: string,
+): { word: string; range: Range } | null => {
   if (!getSettings().tapLookup) return null;
   const target = event.target as Element | null;
   const doc = target?.ownerDocument;
   if (!doc || target?.closest('rt, rp, input, textarea, button')) return null;
+  if (onReadestHighlight(event, doc, bookKey)) return null;
   // 查词卡片开着、或者选着文字（选字工具条开着）：这一下是要关掉它们，照 Readest 原来的处理，不查词（开发者 10-21）
   if (document.querySelector('[data-dict-content]')) return null;
   const sel = doc.getSelection();
@@ -43,6 +135,7 @@ export const odyboTapWord = (event: MouseEvent): { word: string; range: Range } 
   while (end > start && /['’-]/.test(text[end - 1]!)) end--;
   const word = text.slice(start, end);
   if (!/[A-Za-z]/.test(word)) return null;
+  if (skipTap(word)) return null; // 忽略过的、常用词（自己没查过的）：当成点空白处
   const range = doc.createRange();
   range.setStart(node, start);
   range.setEnd(node, end);

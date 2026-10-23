@@ -19,6 +19,8 @@ export interface OdyboSettings {
   vocabPrefetch: boolean;
   /** 生词标法：gloss = 字上面显示这一句里的解释，dot = 只标一个带颜色的点 */
   vocabMarkStyle: 'gloss' | 'dot';
+  /** 词组（蓝色标注）下面加一条蓝色虚线，标出词组从哪到哪（可能和 Readest 自己的标注下划线重叠，所以可以关） */
+  phraseUnderline: boolean;
   /** 单击查词：轻点正文里的英文单词就查它（点空白处照旧翻页、呼出菜单） */
   tapLookup: boolean;
   /** 同步到 WebDAV：查词记录、生词的移出和忽略、这些设置（dataSync.ts） */
@@ -36,6 +38,7 @@ export const DEFAULT_SETTINGS: OdyboSettings = {
   vocabPerRun: 5,
   vocabPrefetch: true,
   vocabMarkStyle: 'gloss',
+  phraseUnderline: true,
   tapLookup: false,
   syncData: true,
   syncPrefetch: true,
@@ -62,6 +65,7 @@ export const getSettings = (): OdyboSettings => {
           : DEFAULT_SETTINGS.vocabPerRun,
       vocabPrefetch: saved.vocabPrefetch !== false,
       vocabMarkStyle: saved.vocabMarkStyle === 'dot' ? 'dot' : 'gloss',
+      phraseUnderline: saved.phraseUnderline !== false,
       tapLookup: saved.tapLookup === true,
       syncData: saved.syncData !== false,
       syncPrefetch: saved.syncPrefetch !== false,

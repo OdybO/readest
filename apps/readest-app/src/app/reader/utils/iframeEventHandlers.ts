@@ -626,8 +626,8 @@ export const handleClick = (
       return;
     }
 
-    // [odybo] 单击查词：开着时轻点正文里的英文单词就查它，点空白处照旧（src/odybo/tapLookup.ts）
-    const odyboTap = !isFixedLayout ? odyboTapWord(event) : null;
+    // [odybo] 单击查词：开着时轻点正文里的英文单词就查它，点空白处、Readest 自己的高亮照旧（src/odybo/tapLookup.ts）
+    const odyboTap = !isFixedLayout ? odyboTapWord(event, bookKey) : null;
     if (odyboTap) {
       eventDispatcher.dispatch('wordlens-dictionary', {
         bookKey,
