@@ -2,6 +2,7 @@
 // 三栏（一周内 / 一个月内 / 更早，按最近一次查询）；每行：原形、次数、最近一次的意思、最近查询时间；
 // 点开看各种写法和每一次查询的书、时间、原句（查的那个词粉色加粗）；可以删除（再查一次会回来）或忽略（再查也不进）。
 // 第四栏「已忽略」：忽略过的词，可以恢复。
+// 三栏里可以切换排序（开发者 10-23）：次数（多的在前，一样多按最近）/ 最新（最近查的在前）；选了记在本机 localStorage。
 import React, { useEffect, useMemo, useState } from 'react';
 import { MdChevronLeft } from 'react-icons/md';
 import {
@@ -15,6 +16,20 @@ import {
   unignoreVocab,
   type VocabEntry,
 } from './vocab';
+
+type SortBy = 'count' | 'last';
+const SORT_KEY = 'odybo.vocabSort';
+const loadSort = (): SortBy => {
+  try {
+    return localStorage.getItem(SORT_KEY) === 'last' ? 'last' : 'count';
+  } catch {
+    return 'count';
+  }
+};
+const SORTS: { id: SortBy; label: string }[] = [
+  { id: 'count', label: '次数' },
+  { id: 'last', label: '最新' },
+];
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -107,8 +122,17 @@ const VocabPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       ),
     [list],
   );
+  const [sortBy, setSortBy] = useState<SortBy>(loadSort);
+  const chooseSort = (s: SortBy) => {
+    setSortBy(s);
+    try {
+      localStorage.setItem(SORT_KEY, s);
+    } catch {}
+  };
   const current = VOCAB_TABS.find((t) => t.id === tab);
+  // loadVocab 已按次数排好；选「最新」时按最近一次查询重排
   const shown = current ? (list ?? []).filter((e) => inTab(e, current)) : [];
+  if (sortBy === 'last') shown.sort((a, b) => b.last - a.last);
   const ignoredList = Object.entries(ignored).sort((a, b) => b[1] - a[1]);
 
   return (
@@ -138,6 +162,24 @@ const VocabPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           已忽略（{ignoredList.length}）
         </button>
       </div>
+      {tab !== 'ignored' && (
+        <div className='flex items-center gap-2 text-sm'>
+          <span className='text-base-content/60'>排序</span>
+          <div role='tablist' className='tabs tabs-boxed tabs-sm w-fit'>
+            {SORTS.map((s) => (
+              <button
+                key={s.id}
+                type='button'
+                role='tab'
+                className={`tab ${sortBy === s.id ? 'tab-active' : ''}`}
+                onClick={() => chooseSort(s.id)}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className='card eink-bordered border-base-200 bg-base-100 border'>
         <div className='divide-base-200 divide-y ps-4'>
           {tab !== 'ignored' && list === null && (

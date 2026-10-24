@@ -1,9 +1,10 @@
-// 阅读界面底部工具栏里我们的按钮：点开一个小面板，几个开关——显示透镜、生词预读、生词标法、单击查词、本书自动预读。
+// 阅读界面底部工具栏里我们的按钮：点开一个小面板，几个开关——显示透镜、生词预读、生词标法、词组下划虚线、点的位置、单击查词、本书句子预读。
 // 接入点：footerbar/NavigationBar.tsx（手机 / 平板底栏）和 footerbar/DesktopFooterBar.tsx（电脑底栏）各放一个 <OdyboToolbarButton>。
 // 面板用 portal 挂到页面最外层，免得被底栏的滚动区域裁掉。
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { PiBookOpenText } from 'react-icons/pi';
+import { FiInfo } from 'react-icons/fi';
 import Button from '@/components/Button';
 import { Toggle } from '@/components/primitives/toggle';
 import { useEnv } from '@/context/EnvContext';
@@ -15,19 +16,38 @@ import { isAutoPrefetch, setAutoPrefetch } from './prefetch';
 import { odyboBookName, remarkOpenDocs } from './marks';
 import BookIntroDialog from './BookIntroDialog';
 
+/** 一行开关：名字 + ⓘ（点开才显示说明，开发者 10-23：说明都摆出来面板太长）+ 右边的控件；照设置页 SettingsPanel.tsx 的 Row。 */
 const Row: React.FC<{ label: string; tip?: string; children: React.ReactNode }> = ({
   label,
   tip,
   children,
-}) => (
-  <div className='flex min-h-11 items-center justify-between gap-4'>
-    <div className='flex flex-col'>
-      <span>{label}</span>
-      {tip && <span className='text-base-content/60 text-xs'>{tip}</span>}
+}) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <div className='flex min-h-11 items-center justify-between gap-4'>
+        <div className='flex items-center gap-1'>
+          <span>{label}</span>
+          {tip && (
+            <button
+              type='button'
+              aria-label={`${label}说明`}
+              aria-expanded={open}
+              className='btn btn-ghost btn-xs btn-circle text-base-content/50'
+              onClick={() => setOpen(!open)}
+            >
+              <FiInfo className='h-4 w-4' />
+            </button>
+          )}
+        </div>
+        {children}
+      </div>
+      {open && tip && (
+        <p className='text-base-content/65 -mt-1 pb-2 text-xs leading-relaxed'>{tip}</p>
+      )}
     </div>
-    {children}
-  </div>
-);
+  );
+};
 
 const Panel: React.FC<{ bookKey: string; onClose: () => void; onIntro: () => void }> = ({
   bookKey,
@@ -76,7 +96,10 @@ const Panel: React.FC<{ bookKey: string; onClose: () => void; onIntro: () => voi
             }}
           />
         </Row>
-        <Row label='生词预读' tip='关掉：不预读生词，书里也不标生词'>
+        <Row
+          label='生词预读'
+          tip='开着：查完往后找生词提前查好（不用开句子预读）；关掉：不预读生词，书里也不标生词'
+        >
           <Toggle
             checked={s.vocabPrefetch}
             onChange={() => update({ vocabPrefetch: !s.vocabPrefetch })}
@@ -112,15 +135,38 @@ const Panel: React.FC<{ bookKey: string; onClose: () => void; onIntro: () => voi
             onChange={() => update({ phraseUnderline: !s.phraseUnderline })}
           />
         </Row>
+        <Row label='点的位置' tip='往下挪几像素，避开上一行词组的虚线（0 = 原来的位置）'>
+          <div className='join'>
+            <button
+              type='button'
+              disabled={!s.vocabPrefetch}
+              className='btn btn-sm join-item'
+              onClick={() => update({ markOffset: Math.max(-6, s.markOffset - 1) })}
+            >
+              −
+            </button>
+            <span className='btn btn-sm join-item pointer-events-none min-w-10'>
+              {s.markOffset}
+            </span>
+            <button
+              type='button'
+              disabled={!s.vocabPrefetch}
+              className='btn btn-sm join-item'
+              onClick={() => update({ markOffset: Math.min(12, s.markOffset + 1) })}
+            >
+              +
+            </button>
+          </div>
+        </Row>
         <Row label='单击查词' tip='轻点英文单词直接查；两指轻点呼出菜单；点空白处、页边照旧'>
           <Toggle checked={s.tapLookup} onChange={() => update({ tapLookup: !s.tapLookup })} />
         </Row>
         <Row
-          label='本书自动预读'
+          label='本书句子预读'
           tip={
             s.prefetchAllBooks
-              ? '设置里开了「所有书自动预读」'
-              : `查完往后预读 ${s.prefetchAhead} 截`
+              ? '设置里开了「所有书句子预读」'
+              : `查完往后预读 ${s.prefetchAhead} 截句子（生词预读另外管）`
           }
         >
           <Toggle

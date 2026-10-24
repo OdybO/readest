@@ -130,8 +130,9 @@ const applyStyle = (
   gloss: boolean,
   phrase: boolean,
   underline: boolean,
+  offset: number,
 ) => {
-  const sig = `${label}|${gloss}|${phrase}|${underline}`;
+  const sig = `${label}|${gloss}|${phrase}|${underline}|${offset}`;
   if (ruby.getAttribute('data-odybo-sig') === sig) return;
   ruby.setAttribute('data-odybo-sig', sig);
   const color = phrase ? PHRASE_COLOR : WORD_COLOR;
@@ -142,6 +143,9 @@ const applyStyle = (
       fontSize: gloss ? '0.55em' : '0.6em',
       fontWeight: gloss ? 'normal' : 'bold',
       textDecoration: 'none',
+      // 点、小字往下挪（设置「点的位置」，开发者 10-23）：上一行词组的虚线和这一行的点会叠在两行之间
+      position: offset ? 'relative' : '',
+      top: offset ? `${offset}px` : '',
     });
   }
   Object.assign(ruby.style, {
@@ -186,7 +190,13 @@ export const markVocabInDoc = async (doc: Document, book: string) => {
     const pre = (await listByBook<PrefetchRecord>(PREFETCH, book)).filter((r) => r.kind === 'word');
     const own = (await listByBook<HistoryRecord>(HISTORY, book))
       .filter((r) => r.sentence && isVocab(r.answer, r.word))
-      .map((r) => ({ text: r.word, sentence: r.sentence, answer: r.answer, at: r.createdAt }));
+      .map((r) => ({
+        text: r.word,
+        sentence: r.sentence,
+        answer: r.answer,
+        at: r.createdAt,
+        nth: r.nth,
+      }));
     // 忽略了的不标；移出生词本的，移出之前的记录不标（再查一次又会标）
     const recs = [...own, ...pre.map((r) => ({ ...r, at: r.createdAt }))].filter((r) => {
       const lemma = lemmaOf({ word: r.text, answer: r.answer });
@@ -206,9 +216,14 @@ export const markVocabInDoc = async (doc: Document, book: string) => {
       const sm = new RegExp(words.join('\\s+'), 'i').exec(model.text);
       if (!sm) continue;
       const inSentence = lower.slice(sm.index, sm.index + sm[0].length);
-      const wm = new RegExp(`\\b${escRe(rec.text.toLowerCase()).replace(/\s+/g, '\\s+')}\\b`).exec(
-        inSentence,
-      );
+      // 同一句里同一个词有几处时，标记录里的第几个（10-24；没有 nth 就是第 1 个）
+      const wre = new RegExp(`\\b${escRe(rec.text.toLowerCase()).replace(/\s+/g, '\\s+')}\\b`, 'g');
+      let wm: RegExpExecArray | null = null;
+      for (let k = 0; k < (rec.nth ?? 1); k++) {
+        const m = wre.exec(inSentence);
+        if (!m) break;
+        wm = m;
+      }
       if (!wm) continue;
       const start = sm.index + wm.index;
       if (taken.has(start)) continue;
@@ -219,7 +234,15 @@ export const markVocabInDoc = async (doc: Document, book: string) => {
     const labelOf = (answer: string) => (gloss ? meaningOf(answer) || '●' : '●');
     const isPhrase = (t: { rec: { text: string } }) => /\s/.test(t.rec.text.trim());
     const style = (ruby: HTMLElement, rt: HTMLElement | null, t: (typeof targets)[number]) =>
-      applyStyle(ruby, rt, labelOf(t.rec.answer), gloss, isPhrase(t), st.phraseUnderline);
+      applyStyle(
+        ruby,
+        rt,
+        labelOf(t.rec.answer),
+        gloss,
+        isPhrase(t),
+        st.phraseUnderline,
+        st.markOffset,
+      );
     const want = new Map(targets.map((t) => [`${t.start}:${t.end}`, t]));
     let removed = false;
     for (const ruby of [...doc.querySelectorAll(`ruby.${OUR_CLASS}`)]) {

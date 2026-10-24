@@ -197,8 +197,9 @@ export const formatTime = (t: number) => {
   return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 
-/** 生词预读用：生词本排在最前的 top 个、最近 days 天查过的。 */
-export const vocabForPrefetch = async (top: number, days: number) => {
+/** 生词预读用：查过至少 minCount 次、最近 days 天查过的（不再只取前几个，开发者 10-23）。
+ * 次数 = 生词本里的次数：同一处再查一次不加（记录按「书 + 词 + 这一句」存），在别的地方查才加。 */
+export const vocabForPrefetch = async (minCount: number, days: number) => {
   const since = Date.now() - days * 86400000;
-  return (await loadVocab()).filter((e) => e.last >= since).slice(0, top);
+  return (await loadVocab()).filter((e) => e.last >= since && e.count >= minCount);
 };

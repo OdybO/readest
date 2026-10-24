@@ -3,18 +3,26 @@
 //   system.txt      主提示词（发给 AI 的 system）
 //   chunk.txt       选中长句里的一截时附在后面的要求
 //   vocab_hint.txt  预读时的生词提醒，{words} 换成这里出现的生词
+//   vocab_prefetch.txt 生词预读的短提示词（一次问几个生词，一个词一行，prefetch.ts）
 //   book_intro.txt  「书的介绍」的提示词（bookIntro.ts）
 //   common_words.txt 单击查词时跳过的常用词，一行一个（commonWords.ts）
 // 读到的存在本机 localStorage（odybo.prompts），连不上时用上次读到的；一次都没读到、或某个文件没有，就用 App 自带的（prompt.ts）。
 // 用 Readest 自己的 WebDAV 地址、账号和读文件函数（services/sync/providers/webdav/client.ts），不另外设置。
 // 状态库和 WebDAV 函数用到时再加载：这个文件会被 provider.ts 引用，见 vocabLink.ts 的说明。
 import { COMMON_WORDS_TEXT } from './commonWords';
-import { BOOK_INTRO_PROMPT, CHUNK_RULE, ODYBO_SYSTEM_PROMPT, VOCAB_HINT } from './prompt';
+import {
+  BOOK_INTRO_PROMPT,
+  CHUNK_RULE,
+  ODYBO_SYSTEM_PROMPT,
+  VOCAB_HINT,
+  VOCAB_PREFETCH_PROMPT,
+} from './prompt';
 
 export interface Prompts {
   system: string;
   chunk: string;
   vocabHint: string;
+  vocabPrefetch: string;
   bookIntro: string;
   commonWords: string;
   /** webdav = 至少一个文件是从 WebDAV 读的 */
@@ -28,6 +36,7 @@ const FILES = {
   system: 'system.txt',
   chunk: 'chunk.txt',
   vocabHint: 'vocab_hint.txt',
+  vocabPrefetch: 'vocab_prefetch.txt',
   bookIntro: 'book_intro.txt',
   commonWords: 'common_words.txt',
 } as const;
@@ -37,6 +46,7 @@ const BUILTIN: Prompts = {
   system: ODYBO_SYSTEM_PROMPT,
   chunk: CHUNK_RULE,
   vocabHint: VOCAB_HINT,
+  vocabPrefetch: VOCAB_PREFETCH_PROMPT,
   bookIntro: BOOK_INTRO_PROMPT,
   commonWords: COMMON_WORDS_TEXT,
   source: 'builtin',

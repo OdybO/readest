@@ -19,6 +19,13 @@ export const CHUNK_RULE =
 export const VOCAB_HINT =
   '（读者以前查过、还没记住这些词，这里出现了，请在【词组短语】或【难点】里一定解释：{words}）';
 
+/** 生词预读的提示词（开发者 10-23 定，甲）：一次问一段里的几个生词，每个只要音标、这里的意思、原形、构词，一个词一行；
+ * 每个词附所在句和前后各一句，不发整段（真 AI 测过 40 个词：意思和发 3 段一样）。原来每个词单独发整份 system，
+ * 花费和自己查一次差不多，回答里的整句翻译还用不上。测试：D:\Tools\CtxLookup\测试脚本\vocab_short_test.py，
+ * 原文 vocab_short_prompt_v4.txt（要和这里一字不差）。 */
+export const VOCAB_PREFETCH_PROMPT =
+  '你是英汉语境词典。读者在读英文书，下面列出了几个他以前查过、还没记住的词，每个词都附上它所在的句子和前后各一句。\n逐个写出每个词在它所在那一句里的意思。用简体中文，不用 Markdown 符号。每个词只写一行，按编号顺序，格式严格是：\n编号. 词 | 英 /英式音标/ 美 /美式音标/ | 这里的意思 | 原形 | 构词\n\n这里的意思：写这个词本身在所在句子里的中文意思，不要把旁边的词的意思并进来。\n只要它在这句里和前后的词连成搭配（形容词加名词、副词加形容词、动词加宾语、动词加介词等），就在后面括号里写出这个搭配和它的中文意思，比如 testing audience 里的 audience：受众、人群（testing audience 测试人群）；ongoing dialogue 里的 dialogue：交流（ongoing dialogue 持续的交流）；radically different 里的 radically：根本地（radically different 截然不同）；successive versions 里的 successive：相继的（successive versions 一个接一个的版本）。只有它不跟别的词连成搭配，或者拼起来一看就懂（quiet room、red car），才不加括号。\n它在习语、固定词组、短语动词里时，直接写它在这句里的意思（也就是词组的意思），括号里写是哪个词组，比如 up front 里的 front：事先、一开始（固定词组 up front）。括号里必须有中文。\n原形：词典原形，只写英文，比如 pursuing 写 pursue，took 写 take；-ly 副词照写它本身，比如 radically 写 radically，不写 radical。这个词单独就有这层意思的，只写这个词本身，后面跟的介词不算进去，比如 contributed to 写 contribute，depends on 写 depend；只有它单独没有这层意思、意思来自固定词组、习语、短语动词时，才写整个词组的原形，比如 put the release off 里的 off 写 put off，get rid of 里的 rid 写 get rid of。\n人名、公司名、地名、书名这类专有名词：这里的意思写原名，括号里说明它是什么，比如 XEODesign（一家游戏体验研究公司），不要音译、不要硬翻；构词写：无。\n构词：只在它是由词根加前缀、后缀构成的（比如 playable、competitiveness），或者由两个词拼成的（比如 playtest）时才写，从它的原形开始一层层往下拆（outlines 从 outline 开始，不写 -s 那一层），层与层之间用「；」隔开，每层写成「英文词 = 各部分用 + 连起来」，每部分后面括号写中文意思，前缀、后缀写明是前缀还是后缀，比如：competitiveness = competitive（好胜的）+ -ness（名词后缀，表示性质）；competitive = compete（竞争）+ -itive（形容词后缀）；同族：competition（比赛）、competitor（竞争者）。最后的「同族」列 2～4 个由同一个基本词变出来的词，只是拼写像的、只共用一个词根或半个词的都不算（outline 的同族不列 underline、streamline，foundational 的同族不列 profound），时态、单复数变化不算，没有就不写同族。看起来像拼成的、其实不是的（carpet 不是 car + pet）不要硬拆。只是时态、单复数、比较级变化（played、games、faster），或者本身就是最基本的词、或者是词组，都只写：无\n同一个词出现在不同的句子里时，按各自的句子分别写，意思可以不同。';
+
 /** 「书的介绍」（读书之前了解这本书，bookIntro.ts）的 system 提示词。开发者 10-21 要：不是读书里的文字，
  * 是介绍书、背景、读了干嘛、适合谁。用 N1 真 AI 测过 9 本书各两轮（测试脚本\book_intro_test.py）：
  * 原来不认识的书会照书名编内容，加了最后一段后只写简介、目录里看得出来的。 */
@@ -35,7 +42,7 @@ export const BOOK_INTRO_PROMPT =
   '【怎么读】建议怎么读：先看哪部分、哪些可以略读、可以配合什么一起看\n\n' +
   '如果你不认识这本书（不确定它是否真实存在、具体讲什么），【一句话】开头写「不熟悉这本书。」，后面只写从给出的简介、目录里能直接看出来的事；其余各项也一样，简介和目录里看不出来的就写「无」。不要从书名猜内容和类型，不要编造作者生平、出版年份、书里的内容和评价。';
 
-// 上面四段（ODYBO_SYSTEM_PROMPT、CHUNK_RULE、VOCAB_HINT、BOOK_INTRO_PROMPT）是 App 自带的一份；
+// 上面五段（ODYBO_SYSTEM_PROMPT、CHUNK_RULE、VOCAB_HINT、VOCAB_PREFETCH_PROMPT、BOOK_INTRO_PROMPT）是 App 自带的一份；
 // WebDAV 上 odybo/prompts/ 里有文件就用那边的（remotePrompts.ts），改提示词不用重新编译。
 
 /** 选中的是长句里的一截（自己选中的、预读切出来的都用）：把整句一起发过去，附上长句一截的要求。 */
@@ -48,6 +55,7 @@ export const buildChunkPrompt = (
   rule = CHUNK_RULE,
 ) =>
   `书名或文章：${bookTitle || '（未知）'}\n\n选中的内容：${text}\n\n所在句子：${sentence}\n\n所在段落：${para}\n\n` +
+  (para.includes('⟦') ? `${MARK_NOTE}\n\n` : '') +
   rule +
   hint;
 
@@ -64,7 +72,69 @@ export const isChunkOf = (text: string, sentence: string) => {
   return words(t) > 6 && words(s) > words(t) + 1 && s.includes(t);
 };
 
-/** 发给 AI 的用户消息：和小工具查词时一样（书名、选中的内容、所在段落）。 */
+// ---------- 标出选中的那一处（开发者 10-24） ----------
+// 同一段里一个词出现不止一次时（I saw a saw），只发词和整段，AI 不知道是哪一处：真 AI 16 次错 9 次
+// （测试脚本\repeat_word_test.py）；段落里用 ⟦ ⟧ 括出选中的那一处、再说一句，16 次全对。
+// 开发者定：不管出现几次都标。记录也按位置分开：同一句里第 2 个起，键里带上「第几个」（第 1 个照旧，原来的记录还能找到）。
+// 电脑小工具（ctx_lookup.py）用同样的标法和说明，两边一字不差。
+
+export const MARK_NOTE = '（段落里用 ⟦ ⟧ 括起来的就是选中的那一处，只解释这一处）';
+export const VOCAB_MARK_NOTE = '（所在句子里用 ⟦ ⟧ 括起来的就是要解释的那一处）';
+
+const escRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** 整词匹配（前后不能紧挨字母数字），不分大小写，中间空白随意 */
+const occRe = (w: string) =>
+  new RegExp(
+    `(?<![A-Za-z0-9'’-])${escRe(w.trim()).replace(/\s+/g, '\\s+')}(?![A-Za-z0-9'’-])`,
+    'gi',
+  );
+
+/** 这个词在 text 里每一处的位置和长度 */
+export const occurrences = (text: string, w: string) => {
+  const out: { at: number; len: number }[] = [];
+  if (!text || !w.trim()) return out;
+  const re = occRe(w);
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    out.push({ at: m.index, len: m[0].length });
+    if (!m[0].length) re.lastIndex++;
+  }
+  return out;
+};
+
+/** 选中的是哪一处：离选中位置 at 最近的那一处 */
+const pickOcc = (text: string, w: string, at: number) =>
+  occurrences(text, w).reduce<{ at: number; len: number } | null>(
+    (b, o) => (!b || Math.abs(o.at - at) < Math.abs(b.at - at) ? o : b),
+    null,
+  );
+
+const wrap = (text: string, o: { at: number; len: number } | null | undefined) =>
+  o ? `${text.slice(0, o.at)}⟦${text.slice(o.at, o.at + o.len)}⟧${text.slice(o.at + o.len)}` : text;
+
+/** 在 text 里用 ⟦ ⟧ 括出选中的那一处（at：选中处在 text 里的位置）；找不到就原样 */
+export const markAt = (text: string, w: string, at: number) => wrap(text, pickOcc(text, w, at));
+
+/** 在一句里括出第 nth 个（从 1 数） */
+export const markNth = (sentence: string, w: string, nth = 1) => {
+  const occ = occurrences(sentence, w);
+  return wrap(sentence, occ[nth - 1] ?? occ[0]);
+};
+
+/** 选中的是所在句子里的第几个（从 1 数）。text：整段；at：选中处在 text 里的位置；sentence：所在句子 */
+export const nthInSentence = (text: string, w: string, at: number, sentence: string) => {
+  const me = pickOcc(text, w, at);
+  if (!me || !sentence) return 1;
+  const s0 = text.lastIndexOf(sentence.slice(0, 30), me.at);
+  if (s0 < 0) return 1;
+  return occurrences(text, w).filter((o) => o.at >= s0 && o.at <= me.at).length || 1;
+};
+
+/** 记录的键里用的「词」：第 1 个就是词本身（和原来一样），第 2 个起带上第几个 */
+export const occKey = (w: string, nth = 1) => (nth > 1 ? `${w} #${nth}` : w);
+
+/** 发给 AI 的用户消息：和小工具查词时一样（书名、选中的内容、所在段落）。
+ * 段落里括出了选中的那一处时，后面加一句说明（MARK_NOTE）。 */
 export const buildUserPrompt = (bookTitle: string, text: string, context: string) =>
   `书名或文章：${bookTitle || '（未知）'}
 
@@ -72,5 +142,82 @@ export const buildUserPrompt = (bookTitle: string, text: string, context: string
   (context
     ? `
 
-所在段落：${context}`
+所在段落：${context}` + (context.includes('⟦') ? `\n\n${MARK_NOTE}` : '')
     : '');
+
+/** 生词预读发给 AI 的用户消息：书名，再一个个列出生词、所在句子、前后各一句（和 vocab_short_test.py 的 short_user 一样）。
+ * 所在句子里用 ⟦ ⟧ 括出要解释的那一处（同一句里有两个时分得清，10-24）。 */
+export const buildVocabPrompt = (
+  bookTitle: string,
+  items: { text: string; sentence: string; prev: string; next: string; nth?: number }[],
+) =>
+  [
+    `书名：${bookTitle || '（未知）'}`,
+    '',
+    '要解释的词：',
+    VOCAB_MARK_NOTE,
+    ...items.flatMap((it, i) => [
+      `${i + 1}. ${it.text}`,
+      `所在句子：${markNth(it.sentence, it.text, it.nth)}`,
+      ...(it.prev ? [`前一句：${it.prev}`] : []),
+      ...(it.next ? [`后一句：${it.next}`] : []),
+      '',
+    ]),
+  ]
+    .join('\n')
+    .trimEnd();
+
+// ---------- 长提示词按这次要用的格式切开（乙，开发者 10-24） ----------
+// 主提示词里单词格式、句子格式两种写法的说明都有，每次都整份发。改成按这次要用哪种格式，只发用得上的说明；
+// AI 回答的格式不变。还是只留一份 system.txt（平板、WebDAV、电脑小工具三处一字不差），发请求时按栏目名切；
+// 栏目名对不上（以后改了提示词、栏目名变了）就发整份，不会出错。
+// 查单词（现在不用，见 kindOfSelection）：去掉句子格式（「其他情况——」那段）、【句子拆解】【难点】的说明，约少 2 成；
+// 查句子：去掉单词格式和范围规则、【构词】的说明，约少 4 成 7。
+// 真 AI 对比：D:\Tools\CtxLookup\测试脚本\split_prompt_test.py（切法和这里一字不差）。
+
+const SPLIT_MARKS = [
+  '英 /英式音标/', // 单词格式开始
+  '其他情况——', // 句子格式那段开始（前面是单词格式和范围规则）
+  '【翻译】按下面', // 句子格式的栏目
+  '翻译要求：',
+  '【句子拆解】的说明：',
+  '【时态】的说明：', // 【难点】的说明在它前面
+  '【构词】的说明：', // 最后一段
+];
+
+export type SystemKind = 'word' | 'sentence' | 'full';
+
+/** 按这次要用的格式切出该发的那部分；full 或者栏目名对不上就整份 */
+export const systemFor = (system: string, kind: SystemKind) => {
+  if (kind === 'full') return system;
+  const at = SPLIT_MARKS.map((m) => system.indexOf(m));
+  const ok = at.every(
+    (p, i) => p >= 0 && system.indexOf(SPLIT_MARKS[i]!, p + 1) < 0 && (i === 0 || p > at[i - 1]!),
+  );
+  if (!ok) return system;
+  const [fmt, other, sentFmt, trans, breakdown, tense, parts] = at as [
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+  ];
+  return kind === 'word'
+    ? system.slice(0, other) + system.slice(trans, breakdown) + system.slice(tense)
+    : system.slice(0, fmt) + system.slice(sentFmt, parts);
+};
+
+/** 这次用哪份：长句的一截、7 个词以上、3 个词以上并且句号问号叹号结尾 → sentence；
+ * 一个单词、两到六个词 → full。两到六个词是固定搭配、普通组合还是半截句子，程序分不清，让 AI 照原来那样自己判断；
+ * 一个单词原来切成 word，真 AI 对比（split_scope_test.py，10-24）切开后【时态】【词组短语】讲到同一段别的句子上
+ * 30 次里 6 次、整份 1 次，开发者定单词照旧发整份（word 那种切法留着，以后要再试再用） */
+export const kindOfSelection = (text: string, chunk = false): SystemKind => {
+  if (chunk) return 'sentence';
+  const t = text.trim();
+  const n = t.split(/\s+/).filter(Boolean).length;
+  if (n <= 1) return 'full';
+  if (n >= 7 || (n >= 3 && /[.!?]["”’)]?$/.test(t))) return 'sentence';
+  return 'full';
+};

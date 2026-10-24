@@ -118,8 +118,8 @@ const PromptBox: React.FC = () => {
           </span>
           <span className='text-base-content/60 text-xs'>
             放在 WebDAV 根目录下
-            odybo/prompts/：system.txt、chunk.txt、vocab_hint.txt；改了不用重新编译，最多 10
-            分钟自动读一次
+            odybo/prompts/：system.txt、chunk.txt、vocab_hint.txt、vocab_prefetch.txt
+            等；改了不用重新编译，最多 10 分钟自动读一次
           </span>
           {msg && <span className='text-base-content/70 text-xs'>{msg}</span>}
         </div>
@@ -202,7 +202,10 @@ const OdyboSettingsPanel: React.FC = () => {
             onChange={(v) => update({ shortSentenceWords: v })}
           />
         </Row>
-        <Row label='所有书自动预读' tip='开：每本书都预读。关：每本书在查词卡片底下单独勾。'>
+        <Row
+          label='所有书句子预读'
+          tip='开：每本书都预读句子。关：每本书在查词卡片底下、或底栏「语境查词」里单独开。生词预读另外管（底栏「生词预读」）。'
+        >
           <Toggle
             checked={s.prefetchAllBooks}
             onChange={() => update({ prefetchAllBooks: !s.prefetchAllBooks })}
@@ -211,8 +214,17 @@ const OdyboSettingsPanel: React.FC = () => {
       </BoxedList>
 
       <BoxedList title='生词预读'>
-        <Row label='生词范围' tip='只看生词本排在最前的 N 个词。'>
-          <Stepper value={s.vocabTop} min={1} max={200} onChange={(v) => update({ vocabTop: v })} />
+        <Row
+          label='查过几次才预读'
+          tip='生词本里查过 N 次以上的词才预读（在不同的地方查才算，同一处再查不加）。第一次查的那一处本来就标着。'
+        >
+          <Stepper
+            value={s.vocabMinCount}
+            min={1}
+            max={20}
+            unit='次'
+            onChange={(v) => update({ vocabMinCount: v })}
+          />
         </Row>
         <Row label='最近几天' tip='只看最近 N 天查过的生词。太久没查的不预读。'>
           <Stepper
@@ -223,12 +235,33 @@ const OdyboSettingsPanel: React.FC = () => {
             onChange={(v) => update({ vocabDays: v })}
           />
         </Row>
-        <Row label='每次最多' tip='每次预读最多多查几个生词。0 = 不预读生词。'>
+        <Row
+          label='往后备好几个'
+          tip='查完词后，从这里往后（到本章末尾）保持这么多个生词已经查好。同一个词在不同的句子里各算一个。0 = 不预读生词。'
+        >
           <Stepper
             value={s.vocabPerRun}
             min={0}
             max={20}
-            onChange={(v) => update({ vocabPerRun: v })}
+            unit='个'
+            onChange={(v) =>
+              update({
+                vocabPerRun: v,
+                vocabRefillAt: Math.min(s.vocabRefillAt, Math.max(0, v - 1)),
+              })
+            }
+          />
+        </Row>
+        <Row
+          label='剩几个就补'
+          tip='往后查好的生词只剩这么多个（或更少）时，才一次补满；没到就不问 AI。设得低，一次补得多、更省；设得高，往后总有查好的，但每次只补一两个。'
+        >
+          <Stepper
+            value={s.vocabRefillAt}
+            min={0}
+            max={Math.max(0, s.vocabPerRun - 1)}
+            unit='个'
+            onChange={(v) => update({ vocabRefillAt: v })}
           />
         </Row>
       </BoxedList>

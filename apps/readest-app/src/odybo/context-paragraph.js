@@ -536,6 +536,38 @@ const epubContext = (range, maxChars) => {
   );
 };
 
+// 选中处往后、到本章末尾的各块文字（生词预读往后找生词用，开发者 10-23）。EPUB 一章是一个文档，所以 body 到底就是本章末尾。
+// 返回 [{ text, from }]：第一块是选中处所在的块，from = 选中处结尾在这一块里的位置（空白都并成一个空格后算）；后面的块 from = 0。
+// 只给 EPUB 这类能重排的书（PDF 文字层没有段落结构，书里标注也只做 EPUB），PDF 返回空。
+export const blocksAfter = (range, maxBlocks = 400) => {
+  const doc = range?.endContainer?.ownerDocument;
+  const body = doc?.body;
+  if (!body) return [];
+  const node =
+    range.endContainer.nodeType === 1 ? range.endContainer : range.endContainer.parentElement;
+  if (node?.closest?.('.textLayer')) return [];
+  const leaves = Array.from(body.querySelectorAll(BLOCK_SELECTOR)).filter(
+    (el) => !el.querySelector(BLOCK_SELECTOR) && el.textContent.trim(),
+  );
+  const ei = leaves.findIndex((el) => el.contains(range.endContainer));
+  if (ei < 0) return [];
+  const squash = (s) => s.replace(/\s+/g, ' ');
+  const pre = doc.createRange();
+  pre.selectNodeContents(leaves[ei]);
+  pre.setEnd(range.endContainer, range.endOffset);
+  const out = [
+    {
+      text: squash(textOf(leaves[ei])).trim(),
+      from: squash(textOf(pre.cloneContents())).trimStart().length,
+    },
+  ];
+  for (let i = ei + 1; i < leaves.length && out.length < maxBlocks; i++) {
+    if (leaves[i].getClientRects().length > 0)
+      out.push({ text: squash(textOf(leaves[i])).trim(), from: 0 });
+  }
+  return out;
+};
+
 // { text: 上下文, at: 选中处在 text 里的位置（-1 = 不知道） }；建不出来时 text 为空
 export const buildContextInfo = (range, { maxChars = 2000 } = {}) => {
   const none = { text: '', at: -1 };

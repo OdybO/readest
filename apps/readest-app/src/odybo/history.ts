@@ -24,6 +24,8 @@ export interface HistoryRecord {
   /** lookup = 自己选中查的；prefetch = 用上了预读的答案；lens = 点单词透镜查的（只记来源；10-21 起也进生词本） */
   source: 'lookup' | 'prefetch' | 'lens';
   createdAt: number;
+  /** 选中的是所在句里的第几个（同一句里同一个词出现不止一次时，10-24）；没有 = 第 1 个 */
+  nth?: number;
 }
 
 export interface PrefetchRecord {
@@ -41,6 +43,10 @@ export interface PrefetchRecord {
   model: string;
   promptVersion: string;
   createdAt: number;
+  /** 生词预读用短提示词问的（只有音标、这里的意思、原形、构词，10-23 起）；卡片上给「完整解释」按钮 */
+  short?: boolean;
+  /** 生词是所在句里的第几个（10-24）；没有 = 第 1 个 */
+  nth?: number;
 }
 
 /** 比对用的「本质内容」：不分大小写、忽略标点和空格多少（照 ctx_lookup.py 的 _n）。 */
