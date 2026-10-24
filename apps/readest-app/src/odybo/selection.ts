@@ -43,7 +43,10 @@ const norm = (s: string) =>
 
 export const rememberSelection = (range: Range) => {
   try {
-    const text = range.toString();
+    // 去掉书上的小字（透镜、我们标的生词、句末的点都是 rt）：range.toString() 会带上它们，和查的词对不上（10-24）
+    const frag = range.cloneContents();
+    frag.querySelectorAll('rt, rp').forEach((x) => x.remove());
+    const text = frag.textContent ?? range.toString();
     const info: { text: string; at: number } = buildContextInfo(range, { maxChars: MAX_CHARS });
     // 一次查词这里会被调两次：紧接着又记同一个词时，保留上一次的「点透镜查的」
     const again = !!last && last.text === norm(text) && Date.now() - last.time < 2000;

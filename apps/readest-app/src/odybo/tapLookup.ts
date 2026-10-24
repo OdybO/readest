@@ -1,6 +1,7 @@
 // 单击查词：开着「单击查词」（底部工具栏「语境查词」里的开关）时，轻点正文里的一个英文单词就查它。
 // 走单词透镜那条路（Annotator 替你选中再弹查词卡片），只是选区由这里给，算自己查的（进生词本）。
 // 点空白处、页边，照旧翻页、呼出菜单；点链接、脚注、图片照旧（Readest 在这之前已经处理掉）。只查单个词，短语和句子还是长按拖选。
+// 句末的点（marks.ts）也从这里走：点了选中那一句，不受单击查词开关管。
 // 接入点：app/reader/utils/iframeEventHandlers.ts 的单击处理里，透镜判断后面调用 odyboTapWord(event)；
 //         Annotator.tsx 的 handleWordLensDictionary 收下这里给的选区。
 import { getSettings } from './settings';
@@ -9,6 +10,7 @@ import { onChange } from './changes';
 import { isIgnored, lemmaOf } from './vocab';
 import { parseWordList } from './commonWords';
 import { getPrompts } from './remotePrompts';
+import { sentenceOfDot } from './marks';
 
 // ---------- 单击时跳过哪些词（开发者 10-23） ----------
 // 跳过：生词本里忽略过的词；常用词表（commonWords.ts，WebDAV 上 common_words.txt 可改）里的词。
@@ -100,8 +102,13 @@ export const odyboTapWord = (
   event: MouseEvent,
   bookKey?: string,
 ): { word: string; range: Range } | null => {
-  if (!getSettings().tapLookup) return null;
   const target = event.target as Element | null;
+  // 句末的点（marks.ts）：不管开没开单击查词，点了就选中这一句打开卡片（卡片认出是预读过的，直接显示）
+  if (target?.closest?.('ruby.odybo-sent')) {
+    if (document.querySelector('[data-dict-content]')) return null; // 卡片开着：这一下是关卡片
+    return sentenceOfDot(target);
+  }
+  if (!getSettings().tapLookup) return null;
   const doc = target?.ownerDocument;
   if (!doc || target?.closest('rt, rp, input, textarea, button')) return null;
   if (onReadestHighlight(event, doc, bookKey)) return null;

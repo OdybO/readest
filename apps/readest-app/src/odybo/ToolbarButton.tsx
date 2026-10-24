@@ -158,6 +158,15 @@ const Panel: React.FC<{ bookKey: string; onClose: () => void; onIntro: () => voi
             </button>
           </div>
         </Row>
+        <Row
+          label='句末的点'
+          tip='预读过的句子末尾标一个绿点（长句里预读过的一截标淡一点的小点），点一下直接打开预读好的答案'
+        >
+          <Toggle
+            checked={s.sentenceDots}
+            onChange={() => update({ sentenceDots: !s.sentenceDots })}
+          />
+        </Row>
         <Row label='单击查词' tip='轻点英文单词直接查；两指轻点呼出菜单；点空白处、页边照旧'>
           <Toggle checked={s.tapLookup} onChange={() => update({ tapLookup: !s.tapLookup })} />
         </Row>

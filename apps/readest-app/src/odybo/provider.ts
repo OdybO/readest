@@ -165,6 +165,8 @@ export const odyboContextProvider: DictionaryProvider = {
         ...rec,
         createdAt: Date.now(),
         source: rec.source === 'lens' ? (lensSource ?? 'lookup') : rec.source,
+        times: (rec.times ?? 1) + 1,
+        firstAt: rec.firstAt ?? rec.createdAt,
       }).then(() => remarkOpenDocs(book)); // 透镜那条改成自己查的：书里补标
     if (ctx.signal.aborted) return { ok: false, reason: 'error', message: 'aborted' };
     // 查完（不管是不是本机记录）就从这里往后预读：开了「本书句子预读」预读句子，开着「生词预读」预读生词
@@ -184,7 +186,8 @@ export const odyboContextProvider: DictionaryProvider = {
           // 句子、生词分开数，哪样没做就不写（开发者 10-23：只预读生词时原来显示在句子预读那一行，像句子在跑）
           // 生词：这次补了几个 / 往后已经备好几个（没到补货线就不问，只显示备好的）
           const parts = [
-            p.sentTotal ? `句子 ${p.sentDone}/${p.sentTotal}` : '',
+            (p.sentTotal ? `句子 ${p.sentDone}/${p.sentTotal}` : '') +
+              (p.sentSkipped ? `（${p.sentSkipped} 句简单，跳过）` : ''),
             p.wordTotal
               ? `生词 ${p.wordDone}/${p.wordTotal}` +
                 (p.wordReady ? `（往后已备 ${p.wordReady} 个）` : '')

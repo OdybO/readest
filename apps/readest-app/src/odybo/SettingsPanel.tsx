@@ -193,6 +193,17 @@ const OdyboSettingsPanel: React.FC = () => {
             onChange={(v) => update({ prefetchAhead: v })}
           />
         </Row>
+        <Row
+          label='难句分数线'
+          tip='只预读看上去难的句子：按从句、插入语、倒装、难懂短语等打分，到这么多分才预读。0 = 不挑，往后挨着预读。'
+        >
+          <Stepper
+            value={s.sentenceMinScore}
+            min={0}
+            max={10}
+            onChange={(v) => update({ sentenceMinScore: v })}
+          />
+        </Row>
         <Row label='短句长度' tip='不超过这么多词的句子算短句；超过的算长句，按逗号分成几截。'>
           <Stepper
             value={s.shortSentenceWords}

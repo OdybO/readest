@@ -1034,7 +1034,8 @@ const Annotator: React.FC<{ bookKey: string; contentInsets: Insets; gridInsets?:
           return;
         }
       }
-      const text = range.toString().trim() || word;
+      // [odybo] 单击查词、句末的点给的 word 已经去掉了书上的小字（rt），用它；range.toString() 会带上小字
+      const text = (tapRange ? word : range.toString().trim()) || word;
       markWordLensLookup(element, !!tapRange); // [odybo] 记下这次是不是点透镜小字查的（src/odybo/selection.ts）
       pendingWordLensDictRef.current = true;
       setSelection({

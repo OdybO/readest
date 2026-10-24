@@ -7,6 +7,8 @@ export interface OdyboSettings {
   prefetchAhead: number;
   /** 短句长度：不超过这么多词的句子整句一截，超过的按逗号分成几截（小工具的 LONG_SENT） */
   shortSentenceWords: number;
+  /** 难句分数线：只预读规则打分（sentenceDifficulty.ts）到这么多分的句子；0 = 不筛，照原来往后挨着预读（10-24） */
+  sentenceMinScore: number;
   /** 所有书句子预读（不用每本书在卡片底下单独勾；只管句子，生词预读看 vocabPrefetch） */
   prefetchAllBooks: boolean;
   /** 查过几次才预读：生词本里查过这么多次（在不同的地方查）的词才预读（开发者 10-23 定，先定 2、看了数据改 1；
@@ -27,6 +29,8 @@ export interface OdyboSettings {
   phraseUnderline: boolean;
   /** 点（和解释小字）往下挪几像素：贴近单词，避开上一行词组的虚线（开发者 10-23，自己实测；0 = 原来的位置，负数往上） */
   markOffset: number;
+  /** 句末的点：预读过的整句末尾（和长句里预读过的一截末尾）标一个点，点一下直接打开预读好的答案（开发者 10-23 想法，10-24 做） */
+  sentenceDots: boolean;
   /** 单击查词：轻点正文里的英文单词就查它（点空白处照旧翻页、呼出菜单） */
   tapLookup: boolean;
   /** 同步到 WebDAV：查词记录、生词的移出和忽略、这些设置（dataSync.ts） */
@@ -38,6 +42,7 @@ export interface OdyboSettings {
 export const DEFAULT_SETTINGS: OdyboSettings = {
   prefetchAhead: 3,
   shortSentenceWords: 20,
+  sentenceMinScore: 4,
   prefetchAllBooks: false,
   vocabMinCount: 1,
   vocabDays: 30,
@@ -47,6 +52,7 @@ export const DEFAULT_SETTINGS: OdyboSettings = {
   vocabMarkStyle: 'gloss',
   phraseUnderline: true,
   markOffset: 0,
+  sentenceDots: true,
   tapLookup: false,
   syncData: true,
   syncPrefetch: true,
@@ -64,6 +70,10 @@ export const getSettings = (): OdyboSettings => {
     return {
       prefetchAhead: Number(saved.prefetchAhead) || DEFAULT_SETTINGS.prefetchAhead,
       shortSentenceWords: Number(saved.shortSentenceWords) || DEFAULT_SETTINGS.shortSentenceWords,
+      sentenceMinScore:
+        Number(saved.sentenceMinScore) >= 0 && saved.sentenceMinScore !== undefined
+          ? Number(saved.sentenceMinScore)
+          : DEFAULT_SETTINGS.sentenceMinScore,
       prefetchAllBooks: saved.prefetchAllBooks === true,
       vocabMinCount:
         Number(saved.vocabMinCount) >= 1
@@ -82,6 +92,7 @@ export const getSettings = (): OdyboSettings => {
       vocabMarkStyle: saved.vocabMarkStyle === 'dot' ? 'dot' : 'gloss',
       phraseUnderline: saved.phraseUnderline !== false,
       markOffset: Number.isFinite(Number(saved.markOffset)) ? Number(saved.markOffset) : 0,
+      sentenceDots: saved.sentenceDots !== false,
       tapLookup: saved.tapLookup === true,
       syncData: saved.syncData !== false,
       syncPrefetch: saved.syncPrefetch !== false,

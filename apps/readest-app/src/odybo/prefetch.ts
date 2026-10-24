@@ -22,6 +22,7 @@ import {
 import { getPrompts } from './remotePrompts';
 import { PREFETCH_PARALLEL, getSettings } from './settings';
 import { vocabForPrefetch, type VocabEntry } from './vocab';
+import { sentenceDifficulty } from './sentenceDifficulty';
 import { remarkOpenDocs } from './marks';
 import type { AheadBlock } from './selection';
 import {
@@ -128,6 +129,9 @@ interface Unit {
   kind: 'chunk' | 'sent' | 'word';
   /** 这一截里出现的生词（原形），提醒 AI 一定解释（照小工具的 vocab_hint） */
   hint?: string[];
+  /** 所在整句的难度分和理由（只挑难句时才有） */
+  score?: number;
+  reasons?: string[];
 }
 
 /** 一段的阅读单位，按顺序。 */
@@ -205,6 +209,7 @@ const prefetchUnit = async (
         model: translator.model ?? '',
         promptVersion,
         createdAt: Date.now(),
+        ...(u.score !== undefined ? { score: u.score, reasons: u.reasons } : {}),
       };
       await putRecord(PREFETCH, rec);
       return true;
@@ -391,6 +396,8 @@ export interface PrefetchProgress {
   sentDone: number;
   wordTotal: number;
   wordDone: number;
+  /** 往后这几句里，规则判简单、没预读的句数 */
+  sentSkipped: number;
   /** 往后已经有答案的生词（这次没问的那些） */
   wordReady: number;
   /** 这次新问到、存下的（句子和生词合起来） */
@@ -402,6 +409,9 @@ export interface PrefetchProgress {
  * 往后「设置里的截数」截，不够就接着数下一段；其中长句的截，整句也加一份。
  * context：整段上下文（段与段之间空一行）；at：选中处在 context 里的位置。
  */
+/** 只挑难句时，往后最多看几句 */
+const LOOK_AHEAD = 12;
+
 export const rollingPrefetch = async (opts: {
   translator: CustomTranslator;
   book: string;
@@ -455,14 +465,39 @@ export const rollingPrefetch = async (opts: {
     if (u.from < selEnd) last = i;
   });
   const covered = selStart <= seq[last]!.from + 1 && selEnd >= seq[last]!.to - 1;
-  const picked = seq.slice(covered ? last + 1 : last, last + 1 + getSettings().prefetchAhead);
+  const begin = covered ? last + 1 : last;
+  let picked = seq.slice(begin, last + 1 + st.prefetchAhead);
+  // 只挑难句（10-24）：往后最多看 LOOK_AHEAD 句，按整句打分，到分数线的句子才预读，凑够「预读截数」截为止
+  let skipped = 0;
+  if (st.sentenceMinScore > 0) {
+    const sents: string[] = [];
+    for (const u of seq.slice(begin)) if (sents.at(-1) !== u.sentence) sents.push(u.sentence);
+    picked = [];
+    for (const [k, s] of sents.slice(0, LOOK_AHEAD).entries()) {
+      if (picked.length >= st.prefetchAhead) break;
+      const d = sentenceDifficulty(s, sents[k + 1] ?? '');
+      if (d.score < st.sentenceMinScore) {
+        skipped++;
+        continue;
+      }
+      for (const u of seq.slice(begin))
+        if (u.sentence === s) picked.push({ ...u, score: d.score, reasons: d.reasons });
+    }
+  }
   // 长句的截：整句也预读一份（放在前面，截的答案会附上整句翻译）
   const units: Unit[] = [];
   const wholes = new Set<string>();
   for (const u of picked) {
     if (u.kind === 'chunk' && !wholes.has(u.sentence)) {
       wholes.add(u.sentence);
-      units.push({ para: u.para, sentence: u.sentence, text: u.sentence, kind: 'sent' });
+      units.push({
+        para: u.para,
+        sentence: u.sentence,
+        text: u.sentence,
+        kind: 'sent',
+        score: u.score,
+        reasons: u.reasons,
+      });
     }
     units.push(u);
   }
@@ -498,6 +533,7 @@ export const rollingPrefetch = async (opts: {
   const progress: PrefetchProgress = {
     sentTotal: todo.length,
     sentDone: 0,
+    sentSkipped: doSentences ? skipped : 0,
     wordTotal: words.length,
     wordDone: 0,
     wordReady: ready,

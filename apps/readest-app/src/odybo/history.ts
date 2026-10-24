@@ -26,6 +26,10 @@ export interface HistoryRecord {
   createdAt: number;
   /** 选中的是所在句里的第几个（同一句里同一个词出现不止一次时，10-24）；没有 = 第 1 个 */
   nth?: number;
+  /** 同一处一共查了几次（10-24 起记；没有 = 1 次）。以后拿来看句子难度打分准不准：查几次的句子多半是真难 */
+  times?: number;
+  /** 第一次查的时间（createdAt 每查一次都刷新；没有 = 和 createdAt 一样） */
+  firstAt?: number;
 }
 
 export interface PrefetchRecord {
@@ -47,6 +51,9 @@ export interface PrefetchRecord {
   short?: boolean;
   /** 生词是所在句里的第几个（10-24）；没有 = 第 1 个 */
   nth?: number;
+  /** 句子预读时规则打的难度分和理由（sentenceDifficulty.ts，10-24 起），以后拿来对照你点开了哪些 */
+  score?: number;
+  reasons?: string[];
 }
 
 /** 比对用的「本质内容」：不分大小写、忽略标点和空格多少（照 ctx_lookup.py 的 _n）。 */

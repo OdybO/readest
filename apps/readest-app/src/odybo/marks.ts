@@ -184,6 +184,11 @@ export const markVocabInDoc = async (doc: Document, book: string) => {
   docs.set(doc, book);
   void import('./dataSync').then((m) => m.syncSoon()); // 打开书时顺便和 WebDAV 同步（最多 10 分钟一次）
   if (busy()) return markLater(doc, book);
+  await markWords(doc, book);
+  if (doc.defaultView && !busy()) await markSentenceDots(doc, book); // 句末的点不管生词预读开没开
+};
+
+const markWords = async (doc: Document, book: string) => {
   try {
     const st = getSettings();
     if (!st.vocabPrefetch) return clearOurs(doc); // 生词预读关着：不标
@@ -295,6 +300,111 @@ export const markVocabInDoc = async (doc: Document, book: string) => {
   } catch (e) {
     console.warn('[odybo] 标生词失败', e);
   }
+};
+
+// ---------- 句末的点（开发者 10-23 想法，10-24 做） ----------
+// 预读过的整句末尾标一个绿点，长句里预读过的一截末尾标一个淡一点的小点（一截正好到句末就只标整句的）。
+// 点一下：选中这一句（或这一截）打开查词卡片，卡片认出是预读过的，直接显示（tapLookup.ts 的 odyboTapWord）。
+// 点是 <ruby class="odybo-sent"><rt>●</rt></ruby>：没有正文，只有 rt 小字——取上下文、拼句子、书里标生词都跳过 rt，
+// 所以点不会混进发给 AI 的文字，也不改动各个字在整章里的位置；cfi-inert 让 Readest 算阅读位置、高亮时不理它。
+// data-odybo-start / end 记下这一句在整章文字里从哪到哪（整章文字不算 rt，标注增减不影响），点的时候按它选中。
+const DOT_CLASS = 'odybo-sent';
+const DOT_COLOR = '#10b981';
+
+const markSentenceDots = async (doc: Document, book: string) => {
+  try {
+    const st = getSettings();
+    const recs = st.sentenceDots
+      ? (await listByBook<PrefetchRecord>(PREFETCH, book)).filter(
+          (r) => r.kind === 'sent' || r.kind === 'chunk',
+        )
+      : [];
+    if (!doc.defaultView || busy()) return;
+    const model = textModel(doc);
+    const find = (s: string, from = 0) => {
+      const words = s.split(/\s+/).filter(Boolean).map(escRe);
+      if (!words.length) return null;
+      const re = new RegExp(words.join('\\s+'), 'gi');
+      re.lastIndex = from;
+      const m = re.exec(model.text);
+      return m ? { start: m.index, end: m.index + m[0].length } : null;
+    };
+    // 这一章应该有哪些点：key = 点的位置（句子或一截的末尾）
+    const want = new Map<string, { start: number; end: number; whole: boolean }>();
+    for (const r of recs.filter((x) => x.kind === 'sent')) {
+      const at = find(r.text);
+      if (at) want.set(String(at.end), { ...at, whole: true });
+    }
+    for (const r of recs.filter((x) => x.kind === 'chunk')) {
+      const sent = find(r.sentence);
+      const at = sent ? find(r.text, sent.start) : find(r.text);
+      if (!at || (sent && at.end > sent.end)) continue;
+      if (!want.has(String(at.end))) want.set(String(at.end), { ...at, whole: false });
+    }
+    for (const dot of [...doc.querySelectorAll(`ruby.${DOT_CLASS}`)]) {
+      const key = dot.getAttribute('data-odybo-end') ?? '';
+      const t = want.get(key);
+      if (t && t.whole === dot.hasAttribute('data-odybo-whole')) {
+        want.delete(key); // 已经有了，不动
+        continue;
+      }
+      dot.remove();
+    }
+    // 从后往前插，前面的位置不受影响（点没有正文，其实插了也不影响，只是保险）
+    for (const t of [...want.values()].sort((a, b) => b.end - a.end)) {
+      const p = model.locate(t.end, true);
+      if (!p) continue;
+      const dot = doc.createElement('ruby');
+      dot.className = DOT_CLASS;
+      dot.setAttribute('cfi-inert', '');
+      dot.setAttribute('data-odybo-start', String(t.start));
+      dot.setAttribute('data-odybo-end', String(t.end));
+      if (t.whole) dot.setAttribute('data-odybo-whole', '');
+      const rt = doc.createElement('rt');
+      rt.textContent = '●';
+      Object.assign(rt.style, {
+        color: DOT_COLOR,
+        opacity: t.whole ? '1' : '0.45',
+        fontSize: t.whole ? '0.7em' : '0.5em',
+        padding: '0 0.25em', // 点太小手指点不中，左右留点空
+        cursor: 'pointer',
+      });
+      dot.appendChild(rt);
+      try {
+        // 句子末尾落在一个标注（透镜或我们的生词）里面时，点放到那个标注后面，不插进它中间
+        const host = p.node.parentElement?.closest('ruby');
+        if (host && p.offset === p.node.data.length) host.after(dot);
+        else {
+          const range = doc.createRange();
+          range.setStart(p.node, p.offset);
+          range.collapse(true);
+          range.insertNode(dot);
+        }
+      } catch {
+        // 文档同时被改了：这一个不标
+      }
+    }
+  } catch (e) {
+    console.warn('[odybo] 标句末的点失败', e);
+  }
+};
+
+/** 点的是句末的点：返回这一句（或这一截）的文字和选区；不是就 null */
+export const sentenceOfDot = (target: Element | null): { word: string; range: Range } | null => {
+  const dot = target?.closest(`ruby.${DOT_CLASS}`);
+  if (!dot) return null;
+  const doc = dot.ownerDocument;
+  const start = Number(dot.getAttribute('data-odybo-start'));
+  const end = Number(dot.getAttribute('data-odybo-end'));
+  if (!Number.isFinite(start) || !(end > start)) return null;
+  const model = textModel(doc);
+  const s = model.locate(start);
+  const e = model.locate(end, true);
+  if (!s || !e) return null;
+  const range = doc.createRange();
+  range.setStart(s.node, s.offset);
+  range.setEnd(e.node, e.offset);
+  return { word: model.text.slice(start, end).replace(/\s+/g, ' ').trim(), range };
 };
 
 /** 预读完、改了设置之后：把打开着的章节重新标一遍（只标这本书的；不传就全部）。 */
