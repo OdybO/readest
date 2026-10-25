@@ -138,6 +138,15 @@ export const importFlags = (remote: Partial<FlagExport>) => {
   return n;
 };
 
+/** 同步「拉取」用：先清空本机的移出 / 忽略，再收 WebDAV 上的（几台设备的就挨个收，新的为准） */
+export const replaceFlags = (remotes: Partial<FlagExport>[]) => {
+  for (const kind of ['deleted', 'ignored'] as FlagKind[]) writeMap(FLAG_KEY[kind], {});
+  writeMap(CLEARED_KEY, {});
+  let n = 0;
+  for (const r of remotes) n += importFlags(r);
+  return n;
+};
+
 export const loadVocab = async (): Promise<VocabEntry[]> => {
   const recs = await listAll<HistoryRecord>(HISTORY);
   const deleted = getDeleted();

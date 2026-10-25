@@ -10,7 +10,7 @@ import { DEFAULT_SETTINGS, getSettings, saveSettings, type OdyboSettings } from 
 import { takeOpenVocab } from './vocabLink';
 import { getPrompts, refreshPrompts } from './remotePrompts';
 import { formatTime } from './vocab';
-import { deviceId, lastSync, syncNow } from './dataSync';
+import { deviceId, lastSync, overwriteNow, syncNow } from './dataSync';
 
 /** 一行设置：名字 + ⓘ（点开说明）+ 右边的控件；说明显示在这一行下面。 */
 const Row: React.FC<{ label: string; tip: string; children: React.ReactNode }> = ({
@@ -75,30 +75,85 @@ const Stepper: React.FC<{
 );
 
 /** 上次同步的结果，和「立即同步」按钮（dataSync.ts） */
-const SyncStatusRow: React.FC = () => {
-  const [st, setSt] = useState(() => lastSync());
-  const [busy, setBusy] = useState(false);
+/** 要点两次的按钮：第一次变红、字换成「再点一次…」，3 秒内再点才执行（覆盖会丢数据，免得误点；开发者 10-23） */
+const ConfirmButton: React.FC<{
+  label: string;
+  confirm: string;
+  disabled: boolean;
+  onConfirm: () => void;
+}> = ({ label, confirm, disabled, onConfirm }) => {
+  const [armed, setArmed] = useState(false);
   return (
-    <div className='flex min-h-14 items-center justify-between gap-4 pe-4'>
-      <div className='flex flex-col'>
+    <button
+      type='button'
+      className={`btn btn-sm shrink-0 ${armed ? 'btn-error' : 'btn-outline'}`}
+      disabled={disabled}
+      onClick={() => {
+        if (!armed) {
+          setArmed(true);
+          setTimeout(() => setArmed(false), 3000);
+          return;
+        }
+        setArmed(false);
+        onConfirm();
+      }}
+    >
+      {armed ? confirm : label}
+    </button>
+  );
+};
+
+/** 同步：合并（照原来，两边都留，同一条新的为准）、拉取（WebDAV 覆盖本机）、推送（本机覆盖 WebDAV）；后两个要点两次 */
+const SyncStatusRow: React.FC<{ onPulled: () => void }> = ({ onPulled }) => {
+  const [st, setSt] = useState(() => lastSync());
+  const [busy, setBusy] = useState('');
+  const run = async (what: string, job: () => Promise<ReturnType<typeof lastSync>>) => {
+    setBusy(what);
+    setSt(await job());
+    setBusy('');
+  };
+  return (
+    <div className='flex flex-col gap-2 pe-4 pb-3'>
+      <div className='flex min-h-14 flex-col justify-center'>
         <span className='settings-content'>
           {st.at ? `上次同步 ${formatTime(st.at)}` : '还没同步过'}
         </span>
         <span className='text-base-content/60 text-xs'>{st.message}</span>
         <span className='text-base-content/60 text-xs'>这台设备：{deviceId()}</span>
       </div>
-      <button
-        type='button'
-        className='btn btn-sm btn-outline shrink-0'
-        disabled={busy}
-        onClick={async () => {
-          setBusy(true);
-          setSt(await syncNow());
-          setBusy(false);
-        }}
-      >
-        {busy ? '同步中…' : '立即同步'}
-      </button>
+      <div className='flex flex-wrap gap-2'>
+        <button
+          type='button'
+          className='btn btn-sm btn-outline shrink-0'
+          disabled={!!busy}
+          onClick={() => run('合并', syncNow)}
+        >
+          {busy === '合并' ? '同步中…' : '合并'}
+        </button>
+        <ConfirmButton
+          label={busy === '拉取' ? '拉取中…' : '拉取'}
+          confirm='再点一次：本机换成 WebDAV 上的'
+          disabled={!!busy}
+          onConfirm={() =>
+            run('拉取', async () => {
+              const r = await overwriteNow('pull');
+              onPulled(); // 设置也换了，页面上的跟着变
+              return r;
+            })
+          }
+        />
+        <ConfirmButton
+          label={busy === '推送' ? '推送中…' : '推送'}
+          confirm='再点一次：WebDAV 换成本机的'
+          disabled={!!busy}
+          onConfirm={() => run('推送', () => overwriteNow('push'))}
+        />
+      </div>
+      <span className='text-base-content/60 text-xs'>
+        合并：两边都留，同一条以新的为准。拉取：本机的查词记录、预读、生词移出和忽略、设置全换成
+        WebDAV 上的，本机多出来的没了。推送：WebDAV 换成本机的，WebDAV
+        上多出来的（包括别的设备的文件夹）删掉。拉取、推送要点两次。
+      </span>
     </div>
   );
 };
@@ -181,7 +236,7 @@ const OdyboSettingsPanel: React.FC = () => {
             onChange={() => update({ syncPrefetch: !s.syncPrefetch })}
           />
         </Row>
-        <SyncStatusRow />
+        <SyncStatusRow onPulled={() => setS(getSettings())} />
       </BoxedList>
 
       <BoxedList title='句子预读'>

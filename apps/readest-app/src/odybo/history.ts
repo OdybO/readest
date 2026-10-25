@@ -176,6 +176,10 @@ export const deleteRecord = async (store: string, key: string, at = Date.now(), 
 
 /** 同步用：全部删除记号 */
 export const exportRemoved = () => readRemoved();
+/** 同步「拉取」用：删除记号整个换掉 */
+export const replaceRemoved = (m: Record<string, number>) => writeRemoved(m);
+/** 同步「拉取」用：清空一个库（不记删除记号、不通知同步） */
+export const clearStore = (store: string) => run(store, 'readwrite', (s) => s.clear());
 /** 同步用：别的设备删的，本机还留着且比删除早的，也删掉。返回删了几条。 */
 export const importRemoved = async (remote: Record<string, number>) => {
   const mine = readRemoved();

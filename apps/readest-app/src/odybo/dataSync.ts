@@ -6,21 +6,24 @@
 // 每台设备只写自己的文件夹，所以两台同时用不会互相覆盖；每台都读别人的文件夹，同一条（同一本书、同一个内容、同一句）按时间新的为准。
 // 重装以后设备名会变，旧设备的文件夹当成「别的设备」读回来，就恢复了。
 // 什么时候同步：打开书、查词时最多 10 分钟拉一次；本机数据改了，1 分钟后上传一次；设置页可以马上同步。
+// 设置页另有两种覆盖（开发者 10-23 定，10-25 做；都要点两次）：拉取 = 用 WebDAV 上的覆盖本机，推送 = 用本机覆盖 WebDAV。
 // 状态库和 WebDAV 函数用到时再加载（这个文件会被 provider.ts 引用，见 vocabLink.ts 的说明）。
 import {
   HISTORY,
   PREFETCH,
+  clearStore,
   exportRemoved,
   getRecord,
   importRemoved,
   isRemoved,
   listAll,
   putRecord,
+  replaceRemoved,
   type HistoryRecord,
 } from './history';
 import { onChange } from './changes';
-import { exportFlags, importFlags } from './vocab';
-import { exportSettings, getSettings, importSettings } from './settings';
+import { exportFlags, importFlags, replaceFlags } from './vocab';
+import { exportSettings, getSettings, importSettings, replaceSettings } from './settings';
 
 const DEVICE_KEY = 'odybo.deviceId';
 const SEEN_KEY = 'odybo.sync.seen'; // 别的设备的文件上次读过的版本（修改时间 + 大小），没变就不再下载
@@ -196,6 +199,108 @@ const markAllOnce = async () => {
   write(DIRTY_KEY, [...dirty]);
 };
 
+// ---------- 覆盖 ----------
+
+/** WebDAV 上各设备的文件夹和里面的 .json 文件（包括自己的） */
+const listRemote = async (c: Conn) => {
+  let devices: { name: string; path: string; isDirectory: boolean }[] = [];
+  try {
+    devices = (await c.client.listDirectory(c.config, c.base)).filter((d) => d.isDirectory);
+  } catch (e) {
+    if ((e as { code?: string }).code === 'NOT_FOUND') return { devices, files: [] };
+    throw e;
+  }
+  const files: { dev: string; name: string; path: string; sig: string }[] = [];
+  for (const dev of devices)
+    for (const f of await c.client.listDirectory(c.config, dev.path))
+      if (!f.isDirectory && f.name.endsWith('.json'))
+        files.push({
+          dev: dev.name,
+          name: f.name,
+          path: f.path,
+          sig: `${f.lastModified ?? ''}|${f.size ?? ''}`,
+        });
+  return { devices, files };
+};
+
+/** 拉取：本机的查词记录、预读（开着「同步预读」时）、移出 / 忽略、删除记号、设置，全换成 WebDAV 上的。
+ * 先把文件全部下载、读通，再清本机——下载到一半断了，本机不动。 */
+const pullOverwrite = async (c: Conn) => {
+  const { files } = await listRemote(c);
+  const wanted = files.filter((f) => c.syncPrefetch || !f.name.startsWith('prefetch-'));
+  if (!wanted.some((f) => f.name.startsWith('history-')))
+    throw new Error('WebDAV 上没有查词记录，本机没动');
+  const got: { name: string; data: Record<string, unknown> }[] = [];
+  for (const f of wanted) {
+    const text = await c.client.getFile(c.config, f.path);
+    if (text == null) throw new Error(`读不到 ${f.dev}/${f.name}，本机没动`);
+    got.push({ name: f.name, data: JSON.parse(text) });
+  }
+  type State = {
+    updatedAt?: number;
+    flags?: object;
+    settings?: { value?: object; at?: number };
+    removed?: Record<string, number>;
+  };
+  const states = got
+    .filter((x) => x.name === 'state.json')
+    .map((x) => x.data as State)
+    .sort((a, b) => (a.updatedAt ?? 0) - (b.updatedAt ?? 0));
+  await clearStore(HISTORY);
+  if (c.syncPrefetch) await clearStore(PREFETCH);
+  // 删除记号几台设备合起来（同一条取最晚的），先放好：下面收记录时删过的不收
+  const removed: Record<string, number> = {};
+  for (const s of states)
+    for (const [id, at] of Object.entries(s.removed ?? {}))
+      removed[id] = Math.max(removed[id] ?? 0, at);
+  replaceRemoved(removed);
+  replaceFlags(states.map((s) => s.flags ?? {}));
+  const newest = states.at(-1);
+  if (newest) replaceSettings(newest.settings); // 设置用最新的那份
+  let records = 0;
+  for (const x of got) {
+    const recs = (x.data['records'] ?? []) as { key: string; createdAt: number }[];
+    if (x.name.startsWith('history-')) records += await importRecords(HISTORY, recs);
+    else if (x.name.startsWith('prefetch-')) records += await importRecords(PREFETCH, recs);
+  }
+  // 本机现在和 WebDAV 一样：没有要上传的；别的设备的文件都读过了
+  dirty.clear();
+  write(DIRTY_KEY, []);
+  write(SEEN_KEY, Object.fromEntries(files.map((f) => [f.path, f.sig])));
+  return { files: got.length, records };
+};
+
+/** 推送：WebDAV 换成本机的。自己文件夹的每个月份都重写；本机已经没有的月份删掉；
+ * 别的设备的文件夹也删掉（不删的话，下次合并又把它们的旧记录拉回本机）。 */
+const pushOverwrite = async (c: Conn) => {
+  const me = deviceId();
+  const dir = `${c.base}/${me}`;
+  await c.client.ensureDirectory(c.config, [c.base.replace(/\/data$/, ''), c.base, dir]);
+  const names = new Set(['state.json']);
+  for (const store of c.syncPrefetch ? [HISTORY, PREFETCH] : [HISTORY]) {
+    const kind = store === HISTORY ? 'history' : 'prefetch';
+    for (const r of await listAll<{ createdAt: number }>(store))
+      names.add(`${kind}-${monthOf(r.createdAt)}.json`);
+  }
+  for (const name of names) {
+    const body = await buildFile(name);
+    if (body) await c.client.putFile(c.config, `${dir}/${name}`, JSON.stringify(body));
+  }
+  const { devices, files } = await listRemote(c);
+  let gone = 0;
+  for (const f of files)
+    if (f.dev === me && !names.has(f.name) && (c.syncPrefetch || !f.name.startsWith('prefetch-'))) {
+      await c.client.deleteFile(c.config, f.path);
+      gone++;
+    }
+  const others = devices.filter((d) => d.name !== me);
+  for (const d of others) await c.client.deleteDirectory(c.config, d.path);
+  dirty.clear();
+  write(DIRTY_KEY, []);
+  write(SEEN_KEY, {});
+  return { sent: names.size, gone, others: others.length };
+};
+
 // ---------- 对外 ----------
 
 export interface SyncStatus {
@@ -236,6 +341,49 @@ export const syncNow = (): Promise<SyncStatus> => {
       const status = {
         at: lastSync().at,
         message: `同步失败：${e instanceof Error ? e.message : String(e)}`,
+      };
+      write(LAST_KEY, status);
+      return status;
+    } finally {
+      running = null;
+    }
+  })();
+  return running;
+};
+
+/** 拉取（WebDAV 覆盖本机）或推送（本机覆盖 WebDAV）；和「立即同步」共用一把锁，不会同时跑 */
+export const overwriteNow = (mode: 'pull' | 'push'): Promise<SyncStatus> => {
+  if (running) return running;
+  running = (async () => {
+    try {
+      const c = await connect();
+      if (!c) {
+        return {
+          message: getSettings().syncData ? 'Readest 里还没设置 WebDAV，没有同步' : '同步已关闭',
+        };
+      }
+      lastPull = Date.now();
+      let message: string;
+      if (mode === 'pull') {
+        const got = await pullOverwrite(c);
+        message = `拉取：本机换成 WebDAV 上的（${got.files} 个文件，${got.records} 条记录）`;
+        const { remarkOpenDocs } = await import('./marks');
+        remarkOpenDocs();
+      } else {
+        const r = await pushOverwrite(c);
+        message =
+          `推送：WebDAV 换成本机的（写了 ${r.sent} 个文件` +
+          (r.gone ? `，删了 ${r.gone} 个本机已经没有的月份` : '') +
+          (r.others ? `，删了 ${r.others} 台别的设备的文件夹` : '') +
+          '）';
+      }
+      const status = { at: Date.now(), message };
+      write(LAST_KEY, status);
+      return status;
+    } catch (e) {
+      const status = {
+        at: lastSync().at,
+        message: `${mode === 'pull' ? '拉取' : '推送'}失败：${e instanceof Error ? e.message : String(e)}`,
       };
       write(LAST_KEY, status);
       return status;

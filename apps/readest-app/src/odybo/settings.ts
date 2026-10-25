@@ -125,6 +125,12 @@ export const exportSettings = () => {
   }
   return { value: getSettings(), at };
 };
+/** 同步「拉取」用：不比时间，直接换成 WebDAV 上的。返回用了没有。 */
+export const replaceSettings = (remote?: { value?: Partial<OdyboSettings>; at?: number }) => {
+  if (!remote?.value) return false;
+  saveSettings({ ...DEFAULT_SETTINGS, ...remote.value }, remote.at || Date.now());
+  return true;
+};
 /** 同步用：别的设备的设置比本机新才用。返回用了没有。 */
 export const importSettings = (remote?: { value?: Partial<OdyboSettings>; at?: number }) => {
   if (!remote?.value || !remote.at || remote.at <= exportSettings().at) return false;
