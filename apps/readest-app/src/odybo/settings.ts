@@ -31,6 +31,8 @@ export interface OdyboSettings {
   markOffset: number;
   /** 句末的点：预读过的整句末尾（和长句里预读过的一截末尾）标一个点，点一下直接打开预读好的答案（开发者 10-23 想法，10-24 做） */
   sentenceDots: boolean;
+  /** 句末的点大小（百分比，50～200；10-25 开发者要的）。点还会按句号后面的空隙自动缩小，不贴下一个字 */
+  sentenceDotSize: number;
   /** 单击查词：轻点正文里的英文单词就查它（点空白处照旧翻页、呼出菜单） */
   tapLookup: boolean;
   /** 同步到 WebDAV：查词记录、生词的移出和忽略、这些设置（dataSync.ts） */
@@ -53,6 +55,7 @@ export const DEFAULT_SETTINGS: OdyboSettings = {
   phraseUnderline: true,
   markOffset: 0,
   sentenceDots: true,
+  sentenceDotSize: 100,
   tapLookup: false,
   syncData: true,
   syncPrefetch: true,
@@ -93,6 +96,10 @@ export const getSettings = (): OdyboSettings => {
       phraseUnderline: saved.phraseUnderline !== false,
       markOffset: Number.isFinite(Number(saved.markOffset)) ? Number(saved.markOffset) : 0,
       sentenceDots: saved.sentenceDots !== false,
+      sentenceDotSize:
+        Number(saved.sentenceDotSize) >= 50 && Number(saved.sentenceDotSize) <= 200
+          ? Number(saved.sentenceDotSize)
+          : DEFAULT_SETTINGS.sentenceDotSize,
       tapLookup: saved.tapLookup === true,
       syncData: saved.syncData !== false,
       syncPrefetch: saved.syncPrefetch !== false,

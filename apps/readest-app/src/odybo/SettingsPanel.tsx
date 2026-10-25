@@ -107,6 +107,7 @@ const ConfirmButton: React.FC<{
 const SyncStatusRow: React.FC<{ onPulled: () => void }> = ({ onPulled }) => {
   const [st, setSt] = useState(() => lastSync());
   const [busy, setBusy] = useState('');
+  const [tip, setTip] = useState(false);
   const run = async (what: string, job: () => Promise<ReturnType<typeof lastSync>>) => {
     setBusy(what);
     setSt(await job());
@@ -121,7 +122,7 @@ const SyncStatusRow: React.FC<{ onPulled: () => void }> = ({ onPulled }) => {
         <span className='text-base-content/60 text-xs'>{st.message}</span>
         <span className='text-base-content/60 text-xs'>这台设备：{deviceId()}</span>
       </div>
-      <div className='flex flex-wrap gap-2'>
+      <div className='flex flex-wrap items-center gap-2'>
         <button
           type='button'
           className='btn btn-sm btn-outline shrink-0'
@@ -148,12 +149,26 @@ const SyncStatusRow: React.FC<{ onPulled: () => void }> = ({ onPulled }) => {
           disabled={!!busy}
           onConfirm={() => run('推送', () => overwriteNow('push'))}
         />
+        <button
+          type='button'
+          aria-label='同步按钮说明'
+          aria-expanded={tip}
+          className='btn btn-ghost btn-xs btn-circle text-base-content/50'
+          onClick={() => setTip(!tip)}
+        >
+          <FiInfo className='h-4 w-4' />
+        </button>
       </div>
-      <span className='text-base-content/60 text-xs'>
-        合并：两边都留，同一条以新的为准。拉取：本机的查词记录、预读、生词移出和忽略、设置全换成
-        WebDAV 上的，本机多出来的没了。推送：WebDAV 换成本机的，WebDAV
-        上多出来的（包括别的设备的文件夹）删掉。拉取、推送要点两次。
-      </span>
+      {tip && (
+        <div className='text-base-content/65 text-[0.8em] leading-relaxed'>
+          <p>合并：两边都留，同一条以新的为准。</p>
+          <p>
+            拉取：本机的查词记录、预读、生词移出和忽略、设置，全换成 WebDAV 上的；本机多出来的没了。
+          </p>
+          <p>推送：WebDAV 换成本机的；WebDAV 上多出来的（包括别的设备的文件夹）删掉。</p>
+          <p>拉取、推送要点两次才执行。</p>
+        </div>
+      )}
     </div>
   );
 };

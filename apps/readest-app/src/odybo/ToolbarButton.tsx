@@ -167,6 +167,32 @@ const Panel: React.FC<{ bookKey: string; onClose: () => void; onIntro: () => voi
             onChange={() => update({ sentenceDots: !s.sentenceDots })}
           />
         </Row>
+        <Row
+          label='点的大小'
+          tip='句末的点有多大（100% = 原来的大小）。句号后面空隙窄时，点还会自动缩小、放在空隙正中，不贴下一个字'
+        >
+          <div className='join'>
+            <button
+              type='button'
+              disabled={!s.sentenceDots}
+              className='btn btn-sm join-item'
+              onClick={() => update({ sentenceDotSize: Math.max(50, s.sentenceDotSize - 10) })}
+            >
+              −
+            </button>
+            <span className='btn btn-sm join-item pointer-events-none min-w-14'>
+              {s.sentenceDotSize}%
+            </span>
+            <button
+              type='button'
+              disabled={!s.sentenceDots}
+              className='btn btn-sm join-item'
+              onClick={() => update({ sentenceDotSize: Math.min(200, s.sentenceDotSize + 10) })}
+            >
+              +
+            </button>
+          </div>
+        </Row>
         <Row label='单击查词' tip='轻点英文单词直接查；两指轻点呼出菜单；点空白处、页边照旧'>
           <Toggle checked={s.tapLookup} onChange={() => update({ tapLookup: !s.tapLookup })} />
         </Row>

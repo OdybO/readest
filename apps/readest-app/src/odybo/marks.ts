@@ -363,23 +363,17 @@ const markSentenceDots = async (doc: Document, book: string) => {
       if (t.whole) dot.setAttribute('data-odybo-whole', '');
       // span 用 inline（不用 inline-block）：不多出换行的地方，点不会单独跑到下一行开头
       Object.assign(dot.style, { position: 'relative' });
-      const size = t.whole ? 0.4 : 0.28; // 圆点直径（em）
-      const pad = 0.3; // 四周透明的一圈，手指好点中；整个感应区大约一个字宽，再大会盖住下一个词的开头
       const i = doc.createElement('i');
       Object.assign(i.style, {
         position: 'absolute',
-        left: `${0.05 - pad}em`,
-        bottom: `${0.7 - pad}em`, // 圆点底边在基线上方 0.7em：句号右上方
-        width: `${size}em`,
-        height: `${size}em`,
-        border: `${pad}em solid transparent`,
+        border: `${DOT_PAD}em solid transparent`, // 四周透明的一圈，手指好点中
         backgroundClip: 'padding-box',
         backgroundColor: DOT_COLOR,
         borderRadius: '50%',
         opacity: t.whole ? '1' : '0.45',
         cursor: 'pointer',
       });
-      dot.appendChild(i);
+      dot.appendChild(i); // 大小、左右位置插进去以后按空隙算（fitDot）
       try {
         // 句子末尾落在一个标注（透镜或我们的生词）里面时，点放到那个标注后面，不插进它中间
         const host = p.node.parentElement?.closest('ruby');
@@ -394,9 +388,62 @@ const markSentenceDots = async (doc: Document, book: string) => {
         // 文档同时被改了：这一个不标
       }
     }
+    // 每次都重算一遍：换了字号、设置里改了点的大小，空隙都变了
+    const scale = st.sentenceDotSize / 100;
+    for (const dot of doc.querySelectorAll<HTMLElement>(`.${DOT_CLASS}`)) fitDot(dot, scale);
   } catch (e) {
     console.warn('[odybo] 标句末的点失败', e);
   }
+};
+
+const DOT_PAD = 0.3; // 透明感应圈的宽（em）：整个感应区大约一个字宽，再大会盖住下一个词的开头
+
+/** 点后面第一个字（跳过空格和生词上方的小字）的位置；找不到就 null */
+const nextCharRect = (dot: Element) => {
+  const doc = dot.ownerDocument;
+  const w = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  w.currentNode = dot;
+  for (let k = 0; k < 8; k++) {
+    const n = w.nextNode() as Text | null;
+    if (!n) return null;
+    if (n.parentElement?.closest('rt')) continue;
+    const at = n.data.search(/\S/);
+    if (at < 0) continue;
+    const r = doc.createRange();
+    r.setStart(n, at);
+    r.setEnd(n, at + 1);
+    return r.getClientRects()[0] ?? null;
+  }
+  return null;
+};
+
+/**
+ * 点的左右位置（10-25 开发者平板上看到：两端对齐时句号后面的空隙宽窄不一，点快贴上下一句的第一个字母）：
+ * 圆点放在句末和下一个字之间空隙的正中。大小不跟着空隙变（试过按空隙缩小，空格才 0.25em 宽，大半的点缩得很小、大小不一），
+ * 点比空隙宽时会伸到句号和下一个字上方——点的底边在基线上方 0.75em，比大写字母顶还高，碰不到字。
+ * 下一个字不在这一行（句子在行尾、下一个字到了下一栏），照默认放在句号右上方。
+ * scale：设置「点的大小」（1 = 100%）。
+ */
+const fitDot = (dot: HTMLElement, scale: number) => {
+  const i = dot.firstElementChild as HTMLElement | null;
+  if (!i) return;
+  const fontPx =
+    parseFloat(dot.ownerDocument.defaultView?.getComputedStyle(dot).fontSize ?? '') || 16;
+  const size = (dot.hasAttribute('data-odybo-whole') ? 0.34 : 0.26) * scale; // 直径（em）；10-25 开发者说整句的点偏大，0.4 → 0.34
+  let left = 0.05; // 圆点左边离句末多远（em）
+  const at = dot.getBoundingClientRect();
+  const next = nextCharRect(dot);
+  if (next && Math.abs(next.top - at.top) < fontPx * 0.6) {
+    const gap = (next.left - at.left) / fontPx;
+    if (gap >= 0 && gap < 1.5) left = (gap - size) / 2;
+  }
+  const em = (v: number) => `${v.toFixed(3)}em`;
+  Object.assign(i.style, {
+    left: em(left - DOT_PAD),
+    bottom: em(0.75 - DOT_PAD), // 圆点底边在基线上方 0.75em：比大写字母顶高
+    width: em(size),
+    height: em(size),
+  });
 };
 
 /** 点的是句末的点：返回这一句（或这一截）的文字和选区；不是就 null */
