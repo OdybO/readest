@@ -100,7 +100,8 @@
   - 等：`gh run watch <编号> -R OdybO/readest --exit-status`；失败看 `gh run view <编号> -R OdybO/readest --log-failed`
   - 下载：`gh run download <编号> -R OdybO/readest -D D:\Tools\readest-apk\<提交号>`，得到 `app-universal-release.apk`
 - 签名：仓库 Secrets `ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`、`ANDROID_KEY_BASE64`，原件是 `D:\Tools\anx-keystore\anx.jks`。别换钥匙，换了平板上要卸载重装、记录全丢。
-- 拷到平板（联想 Y700，电脑上显示 LAVIE Tab 9QHD1）：`powershell -File D:\Tools\CtxLookup\测试脚本\copy_to_tablet.ps1 -File <apk> -NewName readest-odybo-<提交号>.apk`，放到 SD 卡的 Download 目录。平板上直接覆盖安装，设置和记录都在。
+- 放到 WebDAV（开发者 10-24 定）：拷到 N1 的 `\\192.168.2.2\hdd\Private\ReadestSync\odybo\apk\readest-odybo-<提交号>.apk`（WebDAV 根目录下 `odybo/apk/`，平板上用 WebDAV 下载安装）；核对两边文件指纹（哈希）一样后，删掉本机 `D:\Tools\readest-apk\<提交号>`。
+- 或者拷到平板（联想 Y700，电脑上显示 LAVIE Tab 9QHD1）：`powershell -File D:\Tools\CtxLookup\测试脚本\copy_to_tablet.ps1 -File <apk> -NewName readest-odybo-<提交号>.apk`，放到 SD 卡的 Download 目录。平板上直接覆盖安装，设置和记录都在。
 - 包名 `com.odybo.readest`，和官方版能同时装。
 
 ### 进度和讨论记录

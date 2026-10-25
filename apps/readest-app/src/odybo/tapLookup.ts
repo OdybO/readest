@@ -104,7 +104,7 @@ export const odyboTapWord = (
 ): { word: string; range: Range } | null => {
   const target = event.target as Element | null;
   // 句末的点（marks.ts）：不管开没开单击查词，点了就选中这一句打开卡片（卡片认出是预读过的，直接显示）
-  if (target?.closest?.('ruby.odybo-sent')) {
+  if (target?.closest?.('.odybo-sent')) {
     if (document.querySelector('[data-dict-content]')) return null; // 卡片开着：这一下是关卡片
     return sentenceOfDot(target);
   }

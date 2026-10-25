@@ -305,8 +305,9 @@ const markWords = async (doc: Document, book: string) => {
 // ---------- 句末的点（开发者 10-23 想法，10-24 做） ----------
 // 预读过的整句末尾标一个绿点，长句里预读过的一截末尾标一个淡一点的小点（一截正好到句末就只标整句的）。
 // 点一下：选中这一句（或这一截）打开查词卡片，卡片认出是预读过的，直接显示（tapLookup.ts 的 odyboTapWord）。
-// 点是 <ruby class="odybo-sent"><rt>●</rt></ruby>：没有正文，只有 rt 小字——取上下文、拼句子、书里标生词都跳过 rt，
-// 所以点不会混进发给 AI 的文字，也不改动各个字在整章里的位置；cfi-inert 让 Readest 算阅读位置、高亮时不理它。
+// 点是 <span class="odybo-sent"><i></i></span>：span 是空的、宽高都是 0，圆点 <i> 绝对定位浮在句号右上方，不占位置——
+// 行高、字距、换行和没有点时一样（10-24 开发者平板上看到：原来用 <ruby><rt>●</rt></ruby>，rt 把有点的那一行撑高约 10 像素、
+// 点还占约 9 像素宽，整本书排版乱了）。点里没有文字，不会混进发给 AI 的文字，也不改动各个字在整章里的位置；cfi-inert 让 Readest 算阅读位置、高亮时不理它。
 // data-odybo-start / end 记下这一句在整章文字里从哪到哪（整章文字不算 rt，标注增减不影响），点的时候按它选中。
 const DOT_CLASS = 'odybo-sent';
 const DOT_COLOR = '#10b981';
@@ -341,7 +342,7 @@ const markSentenceDots = async (doc: Document, book: string) => {
       if (!at || (sent && at.end > sent.end)) continue;
       if (!want.has(String(at.end))) want.set(String(at.end), { ...at, whole: false });
     }
-    for (const dot of [...doc.querySelectorAll(`ruby.${DOT_CLASS}`)]) {
+    for (const dot of [...doc.querySelectorAll(`.${DOT_CLASS}`)]) {
       const key = dot.getAttribute('data-odybo-end') ?? '';
       const t = want.get(key);
       if (t && t.whole === dot.hasAttribute('data-odybo-whole')) {
@@ -354,22 +355,31 @@ const markSentenceDots = async (doc: Document, book: string) => {
     for (const t of [...want.values()].sort((a, b) => b.end - a.end)) {
       const p = model.locate(t.end, true);
       if (!p) continue;
-      const dot = doc.createElement('ruby');
+      const dot = doc.createElement('span');
       dot.className = DOT_CLASS;
       dot.setAttribute('cfi-inert', '');
       dot.setAttribute('data-odybo-start', String(t.start));
       dot.setAttribute('data-odybo-end', String(t.end));
       if (t.whole) dot.setAttribute('data-odybo-whole', '');
-      const rt = doc.createElement('rt');
-      rt.textContent = '●';
-      Object.assign(rt.style, {
-        color: DOT_COLOR,
+      // span 用 inline（不用 inline-block）：不多出换行的地方，点不会单独跑到下一行开头
+      Object.assign(dot.style, { position: 'relative' });
+      const size = t.whole ? 0.4 : 0.28; // 圆点直径（em）
+      const pad = 0.3; // 四周透明的一圈，手指好点中；整个感应区大约一个字宽，再大会盖住下一个词的开头
+      const i = doc.createElement('i');
+      Object.assign(i.style, {
+        position: 'absolute',
+        left: `${0.05 - pad}em`,
+        bottom: `${0.7 - pad}em`, // 圆点底边在基线上方 0.7em：句号右上方
+        width: `${size}em`,
+        height: `${size}em`,
+        border: `${pad}em solid transparent`,
+        backgroundClip: 'padding-box',
+        backgroundColor: DOT_COLOR,
+        borderRadius: '50%',
         opacity: t.whole ? '1' : '0.45',
-        fontSize: t.whole ? '0.7em' : '0.5em',
-        padding: '0 0.25em', // 点太小手指点不中，左右留点空
         cursor: 'pointer',
       });
-      dot.appendChild(rt);
+      dot.appendChild(i);
       try {
         // 句子末尾落在一个标注（透镜或我们的生词）里面时，点放到那个标注后面，不插进它中间
         const host = p.node.parentElement?.closest('ruby');
@@ -391,7 +401,7 @@ const markSentenceDots = async (doc: Document, book: string) => {
 
 /** 点的是句末的点：返回这一句（或这一截）的文字和选区；不是就 null */
 export const sentenceOfDot = (target: Element | null): { word: string; range: Range } | null => {
-  const dot = target?.closest(`ruby.${DOT_CLASS}`);
+  const dot = target?.closest(`.${DOT_CLASS}`);
   if (!dot) return null;
   const doc = dot.ownerDocument;
   const start = Number(dot.getAttribute('data-odybo-start'));
